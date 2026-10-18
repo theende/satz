@@ -67,6 +67,7 @@
     "@ende/front-matter": "jsr:@ende/front-matter@^2026.10.15",
     "@ende/fs": "jsr:@ende/fs@^2026.10.15",
     "@ende/html": "jsr:@ende/html@^2026.10.15",
+    "@ende/http": "jsr:@ende/http@^2026.10.15",
     "@ende/markdown": "jsr:@ende/markdown@^2026.10.17",
     "@ende/path": "jsr:@ende/path@^2026.10.15",
     "@ende/satz/jsx-runtime": "./jsx_runtime.ts",

@@ -208,3 +208,92 @@ Ende.test("build() renders real docs pages with highlighted, titled code, alerts
   assertStringIncludes(run, `<div class="markdown-alert markdown-alert-caution">`);
   assertStringIncludes(run, `<figcaption>main.ts</figcaption><pre><code class="language-ts"><span class="hl-builtin">console</span>`);
 });
+
+Ende.test("build() writes a redirect page at each oldUrl, in the forms the docs use", async () => {
+  const { pages, read } = await buildSite({
+    "a.md": "---\noldUrl: /old/a/\n---\n",
+    "b.md": "---\noldUrl:\n  - /old/b\n  - /old/b.html\n  - /old/b.md\n---\n",
+    "c.md": "---\noldUrl:\n---\n"
+  });
+
+  assertEquals(
+    await read("old/a/index.html"),
+    `<!DOCTYPE html>\n<html><head><meta charset="utf-8"><meta name="robots" content="noindex"><title>Redirecting to /a/</title>` +
+      `<meta http-equiv="refresh" content="0; url=/a/"><link rel="canonical" href="/a/"></head>` +
+      `<body><p>This page has moved to <a href="/a/">/a/</a>.</p></body></html>\n`
+  );
+  assertStringIncludes(await read("old/b/index.html"), `url=/b/`);
+  assertStringIncludes(await read("old/b.html"), `url=/b/`);
+  assertStringIncludes(await read("old/b.md/index.html"), `url=/b/`);
+  assertEquals(Object.fromEntries(pages.map(page => [page.src, page.redirects])), {
+    "a.md": ["/old/a/"],
+    "b.md": ["/old/b", "/old/b.html", "/old/b.md"],
+    "c.md": []
+  });
+});
+
+Ende.test("build() points a redirect's canonical link at the site's location", async () => {
+  const src = await writeSite({ "a.md": "---\noldUrl: /old/\n---\n" });
+  const dest = join(src, "_site");
+  await build({ src, dest, location: "https://docs.ende.sh/" });
+  assertStringIncludes(await Ende.readTextFile(join(dest, "old", "index.html")), `<link rel="canonical" href="https://docs.ende.sh/a/">`);
+});
+
+Ende.test("build() rejects a redirect that clashes with a page or another redirect", async () => {
+  const page = await writeSite({ "a.md": "---\noldUrl: /b/\n---\n", "b.md": "b\n" });
+  await assertRejects(() => build({ src: page, dest: join(page, "_site") }), Error, "b.md and a.md (oldUrl /b/) both write /b/index.html");
+
+  const redirect = await writeSite({ "a.md": "---\noldUrl: /old\n---\n", "b.md": "---\noldUrl: /old/\n---\n" });
+  await assertRejects(
+    () => build({ src: redirect, dest: join(redirect, "_site") }),
+    Error,
+    "a.md (oldUrl /old) and b.md (oldUrl /old/) both write /old/index.html"
+  );
+});
+
+Ende.test("build() rejects an oldUrl that isn't an absolute path", async () => {
+  const src = await writeSite({ "a.md": "---\noldUrl: runtime/tutorials/kinsta\n---\n" });
+  await assertRejects(
+    () => build({ src, dest: join(src, "_site") }),
+    Error,
+    `a.md has oldUrl "runtime/tutorials/kinsta", which must be a string starting with /`
+  );
+});
+
+Ende.test("build() writes sitemap.xml with every HTML page when the site has a location", async () => {
+  const src = await writeSite({
+    "index.md": "---\nlast_modified: 2026-09-30\n---\n",
+    "b&c.md": "---\nlast_modified: \"2026-10-01T12:00:00Z\"\n---\n",
+    "a.md": "---\noldUrl: /old/\n---\n",
+    "hidden.md": "---\nsitemap: false\n---\n",
+    "404.md": "---\nurl: /404.html\n---\nNot found\n",
+    "feed.page.ts": `export const url = "/feed.xml";\nexport default () => "<feed/>";\n`
+  });
+  const dest = join(src, "_site");
+  await build({ src, dest, location: "https://docs.ende.sh" });
+
+  assertEquals(
+    await Ende.readTextFile(join(dest, "sitemap.xml")),
+    `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
+      `<url><loc>https://docs.ende.sh/</loc><lastmod>2026-09-30</lastmod></url>\n` +
+      `<url><loc>https://docs.ende.sh/a/</loc></url>\n` +
+      `<url><loc>https://docs.ende.sh/b&amp;c/</loc><lastmod>2026-10-01T12:00:00Z</lastmod></url>\n` +
+      `</urlset>\n`
+  );
+});
+
+Ende.test("build() writes no sitemap without a location", async () => {
+  const src = await writeSite({ "a.md": "a\n" });
+  const dest = join(src, "_site");
+  await build({ src, dest });
+  await assertRejects(() => Ende.stat(join(dest, "sitemap.xml")), Ende.errors.NotFound);
+});
+
+Ende.test("build() rejects a location that isn't an absolute URL", async () => {
+  const src = await writeSite({ "a.md": "a\n" });
+  await assertRejects(
+    () => build({ src, dest: join(src, "_site"), location: "docs.ende.sh" }),
+    Error,
+    `location "docs.ende.sh" must be an absolute http(s) URL`
+  );
+});

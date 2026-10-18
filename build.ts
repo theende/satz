@@ -21,6 +21,11 @@ export interface BuildOptions {
   data?: PageData;
   /** Where the site is written. It is emptied first. Defaults to `_site`. */
   dest?: string;
+  /**
+   * The site's absolute URL, e.g. `https://docs.ende.sh`. With it, `build`
+   * writes `/sitemap.xml`, and redirect pages link to their canonical URL.
+   */
+  location?: string;
   /** The site's source directory. Defaults to the current directory. */
   src?: string;
 }
@@ -31,6 +36,8 @@ export interface Page {
   data: PageData;
   /** The file written, relative to `dest`, with `/` separators. */
   dest: string;
+  /** The old URLs (`oldUrl` in the page's data) that redirect to the page. */
+  redirects: string[];
   /** The source file, relative to `src`, with `/` separators. */
   src: string;
   /** The page's URL, e.g. `/guide/intro/` or `/404.html`. */
@@ -50,6 +57,7 @@ export interface LayoutProps extends PageData {
 interface PendingPage {
   data: PageData;
   dest: string;
+  redirects: string[];
   /** Renders the page's content; `urls` maps every page's `src` to its URL. */
   render: (urls: Map<string, string>) => Promise<string>;
   src: string;
@@ -72,6 +80,12 @@ const PAGE_MODULE = /\.page\.tsx?$/;
  * - Files and directories whose names start with `_` or `.` are skipped, apart
  *   from `_data.*` files (merged into the data of every page below them) and
  *   `_includes/` (layouts).
+ * - A page's `oldUrl` (a path or a list of them) writes a redirect page at
+ *   each old URL, which works on any static host: `/old/` and `/old` write
+ *   `old/index.html`, `/old.html` writes `old.html`.
+ * - With a `location`, `/sitemap.xml` lists every HTML page apart from
+ *   `/404.html` and pages whose data has `sitemap: false`, with `<lastmod>`
+ *   from `last_modified` (a date or a string) when they have one.
  *
  * @returns The pages written.
  */
@@ -82,13 +96,17 @@ export async function build(options: BuildOptions = {}): Promise<Page[]> {
   if (dest === src || !relative(dest, src).startsWith(".."))
     throw new Error(`The dest directory ${dest} must not be or contain the src directory ${src}`);
 
+  const location = options.location === undefined ? undefined : siteLocation(options.location);
   const files: { src: string; dest: string; }[] = [];
   const pages: PendingPage[] = [];
   await scan(src, src, dest, options.data ?? {}, pages, files);
 
+  const redirects = pages.flatMap(page => page.redirects.map(oldUrl => ({ dest: redirectPath(oldUrl), src: `${page.src} (oldUrl ${oldUrl})`, url: page.url })));
+
+  const generated = location === undefined ? [] : [{ dest: "sitemap.xml", src: "the sitemap" }];
   const outputs = new Map<string, string>();
 
-  for (const { src: from, dest: to } of [...pages, ...files]) {
+  for (const { src: from, dest: to } of [...pages, ...redirects, ...files, ...generated]) {
     const previous = outputs.get(to);
 
     if (previous !== undefined)
@@ -112,12 +130,100 @@ export async function build(options: BuildOptions = {}): Promise<Page[]> {
     if (page.dest.endsWith(".html") && /^<html[\s>]/i.test(html))
       html = `<!DOCTYPE html>\n${html}`;
 
-    const path = join(dest, page.dest);
-    await ensureDir(dirname(path));
-    await Ende.writeTextFile(path, html);
+    await writeOutput(dest, page.dest, html);
   }
 
-  return pages.map(({ url, src, dest, data }) => ({ url, src, dest, data }));
+  for (const redirect of redirects) {
+    await writeOutput(dest, redirect.dest, redirectPage(redirect.url, location));
+  }
+
+  if (location !== undefined)
+    await writeOutput(dest, "sitemap.xml", sitemap(pages, location));
+
+  return pages.map(({ url, src, dest, data, redirects }) => ({ url, src, dest, data, redirects }));
+}
+
+async function writeOutput(dest: string, file: string, text: string) {
+  const path = join(dest, file);
+  await ensureDir(dirname(path));
+  await Ende.writeTextFile(path, text);
+}
+
+/** The location without a trailing `/`, so page URLs can be appended. */
+function siteLocation(location: string): string {
+  let url;
+
+  try {
+    url = new URL(location);
+  } catch {
+    // Reported below.
+  }
+
+  if (url === undefined || (url.protocol !== "https:" && url.protocol !== "http:"))
+    throw new Error(`The site location ${JSON.stringify(location)} must be an absolute http(s) URL`);
+
+  return location.replace(/\/+$/, "");
+}
+
+/** Reads a page's `oldUrl`: nothing, a path, or a list of paths. */
+function oldUrls(rel: string, data: PageData): string[] {
+  const value = data.oldUrl ?? [];
+  const list = Array.isArray(value) ? value : [value];
+
+  for (const oldUrl of list) {
+    if (typeof oldUrl !== "string" || !oldUrl.startsWith("/"))
+      throw new Error(`${rel} has oldUrl ${JSON.stringify(oldUrl)}, which must be a string starting with /`);
+  }
+
+  return list;
+}
+
+/** Where the redirect page for `oldUrl` goes: `.html` URLs are files, everything else a directory. */
+function redirectPath(oldUrl: string): string {
+  if (oldUrl.endsWith("/"))
+    return `${oldUrl.slice(1)}index.html`;
+
+  if (oldUrl.endsWith(".html"))
+    return oldUrl.slice(1);
+
+  return `${oldUrl.slice(1)}/index.html`;
+}
+
+function redirectPage(url: string, location: string | undefined): string {
+  const to = escape(url);
+  const canonical = escape((location ?? "") + url);
+
+  return `<!DOCTYPE html>\n<html><head><meta charset="utf-8"><meta name="robots" content="noindex"><title>Redirecting to ${to}</title>` +
+    `<meta http-equiv="refresh" content="0; url=${to}"><link rel="canonical" href="${canonical}"></head>` +
+    `<body><p>This page has moved to <a href="${to}">${to}</a>.</p></body></html>\n`;
+}
+
+function sitemap(pages: PendingPage[], location: string): string {
+  const entries = pages
+    .filter(page => page.dest.endsWith(".html") && page.dest !== "404.html" && page.data.sitemap !== false)
+    .sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0))
+    .map(page => {
+      const lastmod = lastModified(page);
+      return `<url><loc>${escape(location + page.url)}</loc>${lastmod === undefined ? "" : `<lastmod>${escape(lastmod)}</lastmod>`}</url>\n`;
+    });
+
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${entries.join("")}</urlset>\n`;
+}
+
+/** `last_modified` as a sitemap date: YAML dates become `YYYY-MM-DD`, strings are kept. */
+function lastModified(page: PendingPage): string | undefined {
+  const value = page.data.last_modified;
+
+  if (value === undefined || value === null)
+    return undefined;
+
+  if (value instanceof Date && !Number.isNaN(value.getTime()))
+    return value.toISOString().slice(0, 10);
+
+  if (typeof value === "string")
+    return value;
+
+  throw new Error(`${page.src} has last_modified ${JSON.stringify(value)}, which must be a date or a string`);
 }
 
 async function scan(root: string, dir: string, dest: string, inherited: PageData, pages: PendingPage[], files: { src: string; dest: string; }[]) {
@@ -221,6 +327,7 @@ async function loadMarkdownPage(path: string, rel: string, inherited: PageData):
   return {
     data,
     dest: outputPath(rel, url),
+    redirects: oldUrls(rel, data),
     render,
     src: rel,
     url
@@ -270,6 +377,7 @@ async function loadModulePages(path: string, rel: string, inherited: PageData): 
     return [{
       data,
       dest: outputPath(rel, url),
+      redirects: oldUrls(rel, data),
       render: () => renderContent(main({ ...data, url })),
       src: rel,
       url
@@ -289,6 +397,7 @@ async function loadModulePages(path: string, rel: string, inherited: PageData): 
     pages.push({
       data: pageData,
       dest: outputPath(rel, url),
+      redirects: oldUrls(rel, pageData),
       render: () => renderContent(content as Child),
       src: rel,
       url

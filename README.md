@@ -6,12 +6,17 @@ through TSX layouts into plain HTML, with no npm packages.
 
 ```sh
 ende run -A jsr:@ende/satz/cli build --src docs --dest _site
+ende run -A jsr:@ende/satz/cli serve --src docs --port 3000
 ```
+
+`serve` builds the site, serves it, and rebuilds and reloads open pages when a
+file changes. A failed build keeps the last good one served and shows the error
+in the browser.
 
 ## A site
 
 ```
-_config.ts          optional: export default { dest, data }
+_config.ts          optional: export default { dest, data, location }
 _data.yaml          data for every page below this directory
 _includes/base.tsx  a layout
 index.md            → /
@@ -32,6 +37,11 @@ static/logo.svg     copied as is
   matter, the first `#` heading as `title`. Code blocks are highlighted with
   `hl-*` classes (`@ende/satz/highlight`); a fence like
   `` ```json title="ende.json" `` gets a `<figcaption>`.
+- `oldUrl` (a path or a list) writes a redirect page at each old URL, which
+  works on any static host; `serve` answers old URLs with a 301.
+- With a `location` (`https://docs.ende.sh`), the build writes `/sitemap.xml`
+  with every HTML page except `/404.html` and pages with `sitemap: false`, and
+  `<lastmod>` from `last_modified`.
 
 Layouts and pages use satz's JSX runtime, which renders to strings:
 

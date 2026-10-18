@@ -16,3 +16,4 @@
  * @module
  */
 export * from "./build.ts";
+export * from "./serve.ts";
