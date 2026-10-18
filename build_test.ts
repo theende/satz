@@ -1,7 +1,7 @@
 // Copyright 2026 the Ende authors. MIT license.
 import { assert, assertEquals, assertRejects, assertStringIncludes } from "@ende/assert";
 import { walk } from "@ende/fs/walk";
-import { join, relative, toFileUrl } from "@ende/path";
+import { join, relative, SEPARATOR, toFileUrl } from "@ende/path";
 import { build, type Page } from "./build.ts";
 
 const FIXTURE = join(import.meta.dirname!, "tests", "fixtures", "basic");
@@ -12,11 +12,12 @@ async function buildFixture(): Promise<{ dest: string; read: (path: string) => P
   return { dest, read: path => Ende.readTextFile(join(dest, path)) };
 }
 
+// Lists the files under `dir` as `/`-separated relative paths, on every OS.
 async function listFiles(dir: string): Promise<string[]> {
   const files = [];
 
   for await (const entry of walk(dir, { includeDirs: false })) {
-    files.push(relative(dir, entry.path));
+    files.push(relative(dir, entry.path).replaceAll(SEPARATOR, "/"));
   }
 
   return files.sort();
@@ -330,7 +331,7 @@ Ende.test("build() emits browser scripts as JavaScript, pointing relative .ts im
   const dest = join(src, "_site");
   await build({ src, dest });
 
-  assertEquals(await listFiles(dest), ["js/lazy.js", "js/lib/b.js", "js/main.js", "js/side.js", "js/types.js", "other/c.js"].map(path => join(path)));
+  assertEquals(await listFiles(dest), ["js/lazy.js", "js/lib/b.js", "js/main.js", "js/side.js", "js/types.js", "other/c.js"]);
 
   const main = await Ende.readTextFile(join(dest, "js", "main.js"));
 
@@ -402,7 +403,7 @@ Ende.test("build() writes no search index or client without search", async () =>
   const src = await writeSite({ "a.md": "a\n" });
   const dest = join(src, "_site");
   await build({ src, dest });
-  assertEquals(await listFiles(dest), [join("a", "index.html")]);
+  assertEquals(await listFiles(dest), ["a/index.html"]);
 });
 
 Ende.test("build() writes the search client to /_satz/search.js as an ES module", async () => {
