@@ -16,12 +16,13 @@ in the browser.
 ## A site
 
 ```
-_config.ts          optional: export default { dest, data, location }
+_config.ts          optional: export default { dest, data, location, search }
 _data.yaml          data for every page below this directory
 _includes/base.tsx  a layout
 index.md            → /
 guide/intro.md      → /guide/intro/
 tags.page.tsx       one page, or a generator yielding many
+js/main.ts          → /js/main.js, a browser script
 static/logo.svg     copied as is
 ```
 
@@ -42,6 +43,22 @@ static/logo.svg     copied as is
 - With a `location` (`https://docs.ende.sh`), the build writes `/sitemap.xml`
   with every HTML page except `/404.html` and pages with `sitemap: false`, and
   `<lastmod>` from `last_modified`.
+- Other `.ts` and `.tsx` files are browser scripts, written as `.js` by
+  `ende transpile` (types stripped, not type-checked; there's no bundling).
+  Relative imports of `.ts` files point at the `.js`. `.d.ts` files are
+  skipped. CSS and everything else is copied as is.
+- With `search: true`, the build writes `/search.json` (the pages in the
+  sitemap's sense, minus `search: false`: URL, title, description, headings and
+  the first ~2000 characters of text without code blocks) and
+  `/_satz/search.js`, the `@ende/satz/search` module as JavaScript. A browser
+  script ranks the index with it:
+
+  ```ts
+  import { search, type SearchEntry } from "/_satz/search.js";
+
+  const entries: SearchEntry[] = await (await fetch("/search.json")).json();
+  const results = search(entries, "serve fi"); // [{ url: "/serve/#serve-files", entry, heading, score }, …]
+  ```
 
 Layouts and pages use satz's JSX runtime, which renders to strings:
 

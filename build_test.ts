@@ -1,7 +1,7 @@
 // Copyright 2026 the Ende authors. MIT license.
 import { assert, assertEquals, assertRejects, assertStringIncludes } from "@ende/assert";
 import { walk } from "@ende/fs/walk";
-import { join, relative } from "@ende/path";
+import { join, relative, toFileUrl } from "@ende/path";
 import { build, type Page } from "./build.ts";
 
 const FIXTURE = join(import.meta.dirname!, "tests", "fixtures", "basic");
@@ -296,4 +296,118 @@ Ende.test("build() rejects a location that isn't an absolute URL", async () => {
     Error,
     `location "docs.ende.sh" must be an absolute http(s) URL`
   );
+});
+
+Ende.test("build() emits browser scripts as JavaScript, pointing relative .ts imports at .js", async () => {
+  const src = await writeSite({
+    "js/main.ts": [
+      `import { b } from "./lib/b.ts";`,
+      `import "./side.ts";`,
+      `import type { T } from "./types.ts";`,
+      `import { x } from "jsr:@ende/x";`,
+      `import y from "https://example.com/y.ts";`,
+      `export * from "../other/c.tsx";`,
+      `export const lazy = () => import("./lazy.ts");`,
+      `export const n: number = 1;`,
+      `console.log(b, x, y, "" as T);`
+    ]
+      .join("\n"),
+    "js/lib/b.ts": `export const b: string = "b";\n`,
+    "js/side.ts": `console.log("side");\n`,
+    "js/lazy.ts": `export default 1;\n`,
+    "js/types.ts": `export type T = string;\n`,
+    "js/env.d.ts": `declare const ENV: string;\n`,
+    "other/c.tsx": `export const c: string = "c";\n`
+  });
+  const dest = join(src, "_site");
+  await build({ src, dest });
+
+  assertEquals(await listFiles(dest), ["js/lazy.js", "js/lib/b.js", "js/main.js", "js/side.js", "js/types.js", "other/c.js"].map(path => join(path)));
+
+  const main = await Ende.readTextFile(join(dest, "js", "main.js"));
+
+  for (
+    const part of [
+      `from "./lib/b.js"`,
+      `import "./side.js"`,
+      `from "../other/c.js"`,
+      `import("./lazy.js")`,
+      `from "jsr:@ende/x"`,
+      `from "https://example.com/y.ts"`,
+      "export const n = 1;"
+    ]
+  ) {
+    assertStringIncludes(main, part);
+  }
+
+  assert(!main.includes("import type"), main);
+});
+
+Ende.test("build() rejects a browser script whose .js clashes with a file", async () => {
+  const src = await writeSite({ "js/main.ts": "export {};\n", "js/main.js": "export {};\n" });
+  await assertRejects(() => build({ src, dest: join(src, "_site") }), Error, "js/main.js and js/main.ts both write /js/main.js");
+});
+
+Ende.test("build() fails with the transpiler's message when a browser script doesn't parse", async () => {
+  const src = await writeSite({ "js/bad.ts": "const x: = ;\n" });
+  const error = await assertRejects(() => build({ src, dest: join(src, "_site") }), Error, "Could not transpile the browser scripts");
+  assertStringIncludes(error.message, "bad.ts");
+});
+
+const SEARCH_SITE = {
+  "index.md": "# Home\n\nWelcome *text*.\n\n## Install it\n\n```sh\nende install\n```\n\nRun `ende`.\n",
+  "guide.md": "---\ntitle: The guide\ndescription: How it works\n---\nA line\nand another.\n\n- one\n- two\n",
+  "hidden.md": "---\nsearch: false\n---\n# Hidden\n",
+  "404.md": "---\nurl: /404.html\n---\n# Not found\n",
+  "moved.md": "---\noldUrl: /old/\n---\n# Moved\n",
+  "about.page.tsx": `export const title = "About";\nexport const description = "Who";\nexport default () => <p>about</p>;\n`,
+  "feed.page.ts": `export const url = "/feed.xml";\nexport default () => "<feed/>";\n`
+};
+
+Ende.test("build() writes a compact search.json of the HTML pages when search is on", async () => {
+  const src = await writeSite(SEARCH_SITE);
+  const dest = join(src, "_site");
+  await build({ src, dest, search: true });
+
+  const json = await Ende.readTextFile(join(dest, "search.json"));
+  assertEquals(json, JSON.stringify(JSON.parse(json)));
+  assertEquals(JSON.parse(json), [
+    { url: "/", title: "Home", headings: [{ text: "Install it", slug: "install-it" }], text: "Welcome text. Run ende." },
+    { url: "/about/", title: "About", description: "Who" },
+    { url: "/guide/", title: "The guide", description: "How it works", text: "A line and another. one two" },
+    { url: "/moved/", title: "Moved" }
+  ]);
+});
+
+Ende.test("build() cuts a search entry's text at a word after 2000 characters", async () => {
+  const src = await writeSite({ "long.md": "word ".repeat(600) + "\n" });
+  const dest = join(src, "_site");
+  await build({ src, dest, search: true });
+
+  const [entry] = JSON.parse(await Ende.readTextFile(join(dest, "search.json")));
+  assert(entry.text.length <= 2000, String(entry.text.length));
+  assert(entry.text.length > 1990, String(entry.text.length));
+  assert(entry.text.endsWith("word"), entry.text.slice(-10));
+});
+
+Ende.test("build() writes no search index or client without search", async () => {
+  const src = await writeSite({ "a.md": "a\n" });
+  const dest = join(src, "_site");
+  await build({ src, dest });
+  assertEquals(await listFiles(dest), [join("a", "index.html")]);
+});
+
+Ende.test("build() writes the search client to /_satz/search.js as an ES module", async () => {
+  const src = await writeSite(SEARCH_SITE);
+  const dest = join(src, "_site");
+  await build({ src, dest, search: true });
+
+  const client = await import(toFileUrl(join(dest, "_satz", "search.js")).href);
+  const entries = JSON.parse(await Ende.readTextFile(join(dest, "search.json")));
+  assertEquals(client.search(entries, "instal")[0]?.url, "/#install-it");
+});
+
+Ende.test("build() rejects a page at the search client's reserved path", async () => {
+  const src = await writeSite({ "x.page.ts": `export const url = "/_satz/search.js";\nexport default () => "";\n` });
+  await assertRejects(() => build({ src, dest: join(src, "_site"), search: true }), Error, "both write /_satz/search.js");
 });

@@ -10,6 +10,8 @@ export interface Config {
   dest?: string;
   /** The site's absolute URL, e.g. `https://docs.ende.sh`. */
   location?: string;
+  /** Whether to write the search index and client (see `BuildOptions.search`). */
+  search?: boolean;
 }
 
 /** Loads `<src>/_config.ts`, or returns `{}` when there isn't one. */

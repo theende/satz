@@ -10,7 +10,7 @@
  * `build` writes the site once. `serve` builds it, serves it, and rebuilds
  * and reloads open pages when a file in `src` changes; Ctrl-C stops it.
  *
- * An optional `<src>/_config.ts` can default-export `{ dest, data, location }`;
+ * An optional `<src>/_config.ts` can default-export `{ dest, data, location, search }`;
  * `dest` in it is relative to `src`, and the flags win over it.
  *
  * @module
@@ -62,7 +62,8 @@ export async function main(args: string[]): Promise<number> {
     src,
     dest,
     data: config.data ?? {},
-    ...(config.location === undefined ? {} : { location: config.location })
+    ...(config.location === undefined ? {} : { location: config.location }),
+    ...(config.search === undefined ? {} : { search: config.search })
   });
 
   console.log(`Built ${pages.length} pages into ${dest} in ${Math.round(performance.now() - start)} ms`);

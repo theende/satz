@@ -168,3 +168,21 @@ Ende.test("serve() re-imports the modules a page imports on every build", async 
     await server.close();
   }
 });
+
+Ende.test("serve() serves browser scripts as JavaScript and rebuilds them on a change", async () => {
+  const src = await writeSite({ "index.md": "# Home\n", "js/main.ts": "export const n: number = 1;\n" });
+  const { server, nextBuild } = await start(src);
+
+  try {
+    const response = await fetch(`${server.url}/js/main.js`);
+    assertEquals(response.status, 200);
+    assertStringIncludes(response.headers.get("content-type") ?? "", "javascript");
+    assertStringIncludes(await response.text(), "export const n = 1;");
+
+    await Ende.writeTextFile(join(src, "js", "main.ts"), "export const n: number = 2;\n");
+    assertEquals((await nextBuild()).ok, true);
+    assertStringIncludes(await (await fetch(`${server.url}/js/main.js`)).text(), "export const n = 2;");
+  } finally {
+    await server.close();
+  }
+});

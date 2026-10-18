@@ -15,7 +15,8 @@
     ".": "./mod.ts",
     "./cli": "./cli.ts",
     "./highlight": "./highlight.ts",
-    "./jsx-runtime": "./jsx_runtime.ts"
+    "./jsx-runtime": "./jsx_runtime.ts",
+    "./search": "./search.ts"
   },
   "fmt": {
     "exclude": [

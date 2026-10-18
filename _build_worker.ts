@@ -33,7 +33,8 @@ worker.onmessage = async ({ data: request }) => {
       src: request.src,
       dest: request.dest,
       data: { ...config.data, ...request.data },
-      ...(location === undefined ? {} : { location })
+      ...(location === undefined ? {} : { location }),
+      ...(config.search === undefined ? {} : { search: config.search })
     });
 
     worker.postMessage({

@@ -6,11 +6,12 @@ import { emptyDir } from "@ende/fs/empty-dir";
 import { ensureDir } from "@ende/fs/ensure-dir";
 import { escape } from "@ende/html";
 import { parse as parseMarkdown, render as renderMarkdown, toc, visit } from "@ende/markdown";
-import type { Code, Html, Root } from "@ende/markdown/types";
+import type { Code, Html, Nodes, Root } from "@ende/markdown/types";
 import { dirname, extname, join, relative, resolve, SEPARATOR, toFileUrl } from "@ende/path";
 import { parse as parseYaml } from "@ende/yaml/parse";
 import { highlight } from "./highlight.ts";
 import { raw, renderToString, type Child, type RawHtml } from "./jsx_runtime.ts";
+import type { SearchEntry, SearchHeading } from "./search.ts";
 
 /** Data available to a page: the `_data` cascade, then the page's own front matter or exports. */
 export type PageData = Record<string, unknown>;
@@ -26,6 +27,12 @@ export interface BuildOptions {
    * writes `/sitemap.xml`, and redirect pages link to their canonical URL.
    */
   location?: string;
+  /**
+   * Whether to write `/search.json`, the search index, and `/_satz/search.js`,
+   * the `@ende/satz/search` module as JavaScript for the site's own scripts to
+   * import.
+   */
+  search?: boolean;
   /** The site's source directory. Defaults to the current directory. */
   src?: string;
 }
@@ -60,18 +67,27 @@ interface PendingPage {
   redirects: string[];
   /** Renders the page's content; `urls` maps every page's `src` to its URL. */
   render: (urls: Map<string, string>) => Promise<string>;
+  /** For Markdown pages: what the search index gets beyond the title and description. */
+  search?: { headings: SearchHeading[]; text: string; };
   src: string;
   url: string;
 }
 
 const DATA_FILES = ["_data.json", "_data.yaml", "_data.yml", "_data.ts"];
 const PAGE_MODULE = /\.page\.tsx?$/;
+const SCRIPT = /\.tsx?$/;
+
+/** How much of a page's text the search index keeps. */
+const SEARCH_TEXT_LIMIT = 2000;
 
 /**
  * Builds the site in `src` into `dest`.
  *
- * - `.md` files and `.page.ts`/`.page.tsx` modules become pages; other files
- *   are copied as they are.
+ * - `.md` files and `.page.ts`/`.page.tsx` modules become pages. Other `.ts`
+ *   and `.tsx` files are browser scripts: they're written as `.js` with their
+ *   types stripped (by `ende transpile`, without type-checking), and relative
+ *   imports of `.ts`/`.tsx` files point at the `.js` instead. `.d.ts` files are
+ *   skipped. Everything else is copied as it is.
  * - Markdown pages get their headings as `toc` (from `@ende/markdown`'s
  *   `toc()`), and the first `#` heading as `title` when their front matter has
  *   none. Code blocks are highlighted (see `@ende/satz/highlight`), and a block
@@ -86,6 +102,11 @@ const PAGE_MODULE = /\.page\.tsx?$/;
  * - With a `location`, `/sitemap.xml` lists every HTML page apart from
  *   `/404.html` and pages whose data has `sitemap: false`, with `<lastmod>`
  *   from `last_modified` (a date or a string) when they have one.
+ * - With `search`, `/search.json` lists the same pages (apart from those
+ *   whose data has `search: false`) for `@ende/satz/search`: each page's URL,
+ *   title, description, its headings below the title, and the first 2000 or so
+ *   characters of its text, without code blocks. `/_satz/search.js` is that
+ *   module, for the browser.
  *
  * @returns The pages written.
  */
@@ -99,14 +120,20 @@ export async function build(options: BuildOptions = {}): Promise<Page[]> {
   const location = options.location === undefined ? undefined : siteLocation(options.location);
   const files: { src: string; dest: string; }[] = [];
   const pages: PendingPage[] = [];
-  await scan(src, src, dest, options.data ?? {}, pages, files);
+  const scripts: string[] = [];
+  await scan(src, src, dest, options.data ?? {}, pages, files, scripts);
 
   const redirects = pages.flatMap(page => page.redirects.map(oldUrl => ({ dest: redirectPath(oldUrl), src: `${page.src} (oldUrl ${oldUrl})`, url: page.url })));
+  const scriptOutputs = scripts.map(script => ({ dest: script.replace(SCRIPT, ".js"), src: script }));
 
-  const generated = location === undefined ? [] : [{ dest: "sitemap.xml", src: "the sitemap" }];
+  const generated = [
+    ...(location === undefined ? [] : [{ dest: "sitemap.xml", src: "the sitemap" }]),
+    ...(options.search ? [{ dest: "search.json", src: "the search index" }, { dest: "_satz/search.js", src: "satz's search client" }] : [])
+  ];
+
   const outputs = new Map<string, string>();
 
-  for (const { src: from, dest: to } of [...pages, ...redirects, ...files, ...generated]) {
+  for (const { src: from, dest: to } of [...pages, ...redirects, ...files, ...scriptOutputs, ...generated]) {
     const previous = outputs.get(to);
 
     if (previous !== undefined)
@@ -114,6 +141,11 @@ export async function build(options: BuildOptions = {}): Promise<Page[]> {
 
     outputs.set(to, from);
   }
+
+  // Transpiled before dest is emptied, so a script that doesn't parse leaves
+  // the last build in place.
+  const transpiled = scripts.length === 0 ? new Map<string, string>() : await transpile(src, scripts);
+  const client = options.search ? await searchClient() : undefined;
 
   // Source path → URL, for rewriting links to .md files.
   const urls = new Map(pages.map(page => [page.src, page.url]));
@@ -137,8 +169,17 @@ export async function build(options: BuildOptions = {}): Promise<Page[]> {
     await writeOutput(dest, redirect.dest, redirectPage(redirect.url, location));
   }
 
+  for (const script of scriptOutputs) {
+    await writeOutput(dest, script.dest, transpiled.get(script.src)!);
+  }
+
   if (location !== undefined)
     await writeOutput(dest, "sitemap.xml", sitemap(pages, location));
+
+  if (client !== undefined) {
+    await writeOutput(dest, "search.json", searchIndex(pages));
+    await writeOutput(dest, "_satz/search.js", client);
+  }
 
   return pages.map(({ url, src, dest, data, redirects }) => ({ url, src, dest, data, redirects }));
 }
@@ -198,16 +239,142 @@ function redirectPage(url: string, location: string | undefined): string {
     `<body><p>This page has moved to <a href="${to}">${to}</a>.</p></body></html>\n`;
 }
 
+/** The HTML pages a sitemap or search index lists, apart from `/404.html`, by URL. */
+function listedPages(pages: PendingPage[], key: "sitemap" | "search"): PendingPage[] {
+  return pages
+    .filter(page => page.dest.endsWith(".html") && page.dest !== "404.html" && page.data[key] !== false)
+    .sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
+}
+
 function sitemap(pages: PendingPage[], location: string): string {
-  const entries = pages
-    .filter(page => page.dest.endsWith(".html") && page.dest !== "404.html" && page.data.sitemap !== false)
-    .sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0))
+  const entries = listedPages(pages, "sitemap")
     .map(page => {
       const lastmod = lastModified(page);
       return `<url><loc>${escape(location + page.url)}</loc>${lastmod === undefined ? "" : `<lastmod>${escape(lastmod)}</lastmod>`}</url>\n`;
     });
 
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${entries.join("")}</urlset>\n`;
+}
+
+function searchIndex(pages: PendingPage[]): string {
+  const entries = listedPages(pages, "search").map(page => {
+    const entry: SearchEntry = { url: page.url, title: typeof page.data.title === "string" ? page.data.title : page.url };
+
+    if (typeof page.data.description === "string" && page.data.description !== "")
+      entry.description = page.data.description;
+
+    if (page.search !== undefined && page.search.headings.length > 0)
+      entry.headings = page.search.headings;
+
+    if (page.search !== undefined && page.search.text !== "")
+      entry.text = page.search.text;
+
+    return entry;
+  });
+
+  return JSON.stringify(entries);
+}
+
+// Blocks whose text is followed by a space, so words of adjacent blocks don't run together.
+const TEXT_BLOCKS = new Set(["paragraph", "tableCell"]);
+
+/**
+ * The text of a Markdown page for the search index: no code blocks (they're
+ * large, and their words make poor matches), no raw HTML, and no headings
+ * (indexed on their own), cut at a word near {@linkcode SEARCH_TEXT_LIMIT}.
+ */
+function searchText(ast: Root): string {
+  const parts: string[] = [];
+
+  const walk = (node: Nodes) => {
+    if (node.type === "code" || node.type === "html" || node.type === "heading")
+      return;
+
+    if (node.type === "text" || node.type === "inlineCode")
+      parts.push(node.value);
+    else if (node.type === "break")
+      parts.push(" ");
+
+    if ("children" in node) {
+      for (const child of node.children) {
+        walk(child);
+      }
+    }
+
+    if (TEXT_BLOCKS.has(node.type))
+      parts.push(" ");
+  };
+
+  walk(ast);
+  const text = parts.join("").replace(/\s+/g, " ").trim();
+
+  if (text.length <= SEARCH_TEXT_LIMIT)
+    return text;
+
+  const space = text.lastIndexOf(" ", SEARCH_TEXT_LIMIT);
+  return text.slice(0, space > 0 ? space : SEARCH_TEXT_LIMIT);
+}
+
+/**
+ * Transpiles `files` (relative to `cwd`, which they must be under) with one
+ * `ende transpile`, which uses the `ende.json` it finds for them, and returns
+ * each file's JavaScript with its relative `.ts`/`.tsx` imports pointing at
+ * `.js`.
+ */
+async function transpile(cwd: string, files: string[], flags: string[] = []): Promise<Map<string, string>> {
+  const outdir = await Ende.makeTempDir({ prefix: "satz-transpile-" });
+
+  try {
+    const { code, stderr } = await new Ende.Command(Ende.execPath(), {
+      args: ["transpile", ...flags, "--outdir", outdir, ...files],
+      cwd,
+      env: { NO_COLOR: "1" },
+      stdout: "null",
+      stderr: "piped"
+    })
+      .output();
+
+    if (code !== 0) {
+      const message = new TextDecoder().decode(stderr).split("\n").filter(line => !line.includes("is experimental")).join("\n").trim();
+      throw new Error(`Could not transpile the browser scripts: ${message}`);
+    }
+
+    const outputs = new Map<string, string>();
+
+    for (const file of files) {
+      outputs.set(file, pointImportsAtJs(await Ende.readTextFile(join(outdir, file.replace(SCRIPT, ".js")))));
+    }
+
+    return outputs;
+  } finally {
+    await Ende.remove(outdir, { recursive: true });
+  }
+}
+
+/**
+ * Rewrites relative `.ts`/`.tsx` module specifiers (`from "./a.ts"`,
+ * `import "./a.ts"`, `import("./a.ts")`) to `.js`. It works on the text, so a
+ * string that merely looks like one of those is rewritten too.
+ */
+function pointImportsAtJs(code: string): string {
+  return code.replace(/(\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)(["'])(\.\.?\/[^"'\n]*?)\.tsx?\2/g, "$1$2$3.js$2");
+}
+
+/** `@ende/satz/search` as JavaScript, read from wherever satz is loaded from. */
+async function searchClient(): Promise<string> {
+  const response = await fetch(new URL("./search.ts", import.meta.url));
+
+  if (!response.ok)
+    throw new Error(`Could not read satz's search client: ${response.status} ${response.statusText}`);
+
+  const dir = await Ende.makeTempDir({ prefix: "satz-search-" });
+
+  try {
+    await Ende.writeTextFile(join(dir, "search.ts"), await response.text());
+    return (await transpile(dir, ["search.ts"], ["--no-config"])).get("search.ts")!;
+  } finally {
+    await Ende.remove(dir, { recursive: true });
+  }
 }
 
 /** `last_modified` as a sitemap date: YAML dates become `YYYY-MM-DD`, strings are kept. */
@@ -226,7 +393,15 @@ function lastModified(page: PendingPage): string | undefined {
   throw new Error(`${page.src} has last_modified ${JSON.stringify(value)}, which must be a date or a string`);
 }
 
-async function scan(root: string, dir: string, dest: string, inherited: PageData, pages: PendingPage[], files: { src: string; dest: string; }[]) {
+async function scan(
+  root: string,
+  dir: string,
+  dest: string,
+  inherited: PageData,
+  pages: PendingPage[],
+  files: { src: string; dest: string; }[],
+  scripts: string[]
+) {
   const data = { ...inherited, ...(await loadDataFiles(dir)) };
   const entries = [];
 
@@ -245,11 +420,15 @@ async function scan(root: string, dir: string, dest: string, inherited: PageData
     const rel = toPosix(relative(root, path));
 
     if (entry.isDirectory)
-      await scan(root, path, dest, data, pages, files);
+      await scan(root, path, dest, data, pages, files, scripts);
     else if (entry.name.endsWith(".md"))
       pages.push(await loadMarkdownPage(path, rel, data));
     else if (PAGE_MODULE.test(entry.name))
       pages.push(...(await loadModulePages(path, rel, data)));
+    else if (entry.name.endsWith(".d.ts"))
+      continue;
+    else if (SCRIPT.test(entry.name))
+      scripts.push(rel);
     else
       files.push({ dest: rel, src: rel });
   }
@@ -329,6 +508,7 @@ async function loadMarkdownPage(path: string, rel: string, inherited: PageData):
     dest: outputPath(rel, url),
     redirects: oldUrls(rel, data),
     render,
+    search: { headings: headings.filter(heading => heading.depth > 1).map(({ text, slug }) => ({ text, slug })), text: searchText(ast) },
     src: rel,
     url
   };
