@@ -55,7 +55,8 @@ The command-line flags win over `_config.ts`.
   generator, yields pages that each have a `url`.
 - **URLs** come from the path, or from `url` in the page's data. They end with
   `/` (written as `index.html`) or a file extension (`/404.html`,
-  `/feed.xml`). Two sources writing the same file fail the build.
+  `/feed.xml`). Two sources writing the same file fail the build, and so do
+  paths that differ only in case, which are one file on macOS and Windows.
 - **Data.** `_data.json`, `_data.yaml`, `_data.yml` and `_data.ts` merge into
   the data of every page below them; front matter and page exports win.
 - **Layouts.** `layout: base.tsx` renders the page through

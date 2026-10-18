@@ -165,7 +165,9 @@ export async function build(options: BuildOptions = {}): Promise<Page[]> {
     ...(options.search ? [{ dest: "search.json", src: "the search index" }, { dest: "_satz/search.js", src: "satz's search client" }] : [])
   ];
 
-  const outputs = new Map<string, string>();
+  // By lowercased path: paths that differ only in case are one file on a
+  // case-insensitive file system, so the second would overwrite the first.
+  const outputs = new Map<string, { src: string; dest: string; }>();
 
   const claims = [
     ...pages,
@@ -176,12 +178,15 @@ export async function build(options: BuildOptions = {}): Promise<Page[]> {
   ];
 
   for (const { src: from, dest: to } of claims) {
-    const previous = outputs.get(to);
+    const previous = outputs.get(to.toLowerCase());
+
+    if (previous !== undefined && previous.dest === to)
+      throw new Error(`${previous.src} and ${from} both write /${to}`);
 
     if (previous !== undefined)
-      throw new Error(`${previous} and ${from} both write /${to}`);
+      throw new Error(`${previous.src} writes /${previous.dest} and ${from} writes /${to}, which differ only in case`);
 
-    outputs.set(to, from);
+    outputs.set(to.toLowerCase(), { src: from, dest: to });
   }
 
   // Transpiled before dest is emptied, so a script that doesn't parse leaves

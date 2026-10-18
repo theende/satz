@@ -126,6 +126,16 @@ Ende.test("build() rejects two pages with the same URL", async () => {
   await assertRejects(() => build({ src, dest: join(src, "_site") }), Error, "a.md and b.md both write /x/index.html");
 });
 
+Ende.test("build() rejects outputs whose paths differ only in case", async () => {
+  // They'd be one file on a case-insensitive file system (macOS, Windows).
+  const src = await writeSite({ "a.md": "---\nurl: /Name/\n---\n", "b.md": "---\nurl: /name/\n---\n" });
+  await assertRejects(
+    () => build({ src, dest: join(src, "_site") }),
+    Error,
+    "a.md writes /Name/index.html and b.md writes /name/index.html, which differ only in case"
+  );
+});
+
 Ende.test("build() rejects a link to a missing Markdown page", async () => {
   const src = await writeSite({ "a.md": "[b](b.md)\n" });
   await assertRejects(() => build({ src, dest: join(src, "_site") }), Error, "a.md links to b.md, which is not a page");
