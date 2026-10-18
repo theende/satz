@@ -8,7 +8,8 @@ const SITE = {
   "guide.md": "---\noldUrl:\n  - /old-guide\n  - /older/guide.html\n---\n# Guide\n",
   "404.md": "---\nurl: /404.html\n---\nNothing here.\n",
   "full.page.ts": `export default () => "<html><body><p>full</p></body></html>";\n`,
-  "robots.txt": "User-agent: *\n"
+  "robots.txt": "User-agent: *\n",
+  "_config.ts": `export default { redirects: { "/go/guide/": "/guide/#guide" } };\n`
 };
 
 async function writeSite(files: Record<string, string>): Promise<string> {
@@ -120,6 +121,10 @@ Ende.test("serve() answers a missing page with 404.html and an old URL with a 30
       await moved.body?.cancel();
       assertEquals([moved.status, moved.headers.get("location")], [301, "/guide/"], oldUrl);
     }
+
+    const go = await fetch(`${server.url}/go/guide/`, { redirect: "manual" });
+    await go.body?.cancel();
+    assertEquals([go.status, go.headers.get("location")], [301, "/guide/#guide"]);
   } finally {
     await server.close();
   }

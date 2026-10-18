@@ -4,10 +4,11 @@ import { test as hasFrontMatter } from "@ende/front-matter/test";
 import { copy } from "@ende/fs/copy";
 import { emptyDir } from "@ende/fs/empty-dir";
 import { ensureDir } from "@ende/fs/ensure-dir";
+import { walk } from "@ende/fs/walk";
 import { escape } from "@ende/html";
 import { parse as parseMarkdown, render as renderMarkdown, toc, visit } from "@ende/markdown";
 import type { Code, Html, Nodes, Root } from "@ende/markdown/types";
-import { dirname, extname, isAbsolute, join, relative, resolve, SEPARATOR, toFileUrl } from "@ende/path";
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, SEPARATOR, toFileUrl } from "@ende/path";
 import { parse as parseYaml } from "@ende/yaml/parse";
 import { SEARCH_CLIENT } from "./_search_client.ts";
 import { highlight } from "./highlight.ts";
@@ -19,15 +20,29 @@ export type PageData = Record<string, unknown>;
 
 /** Options for {@linkcode build}. */
 export interface BuildOptions {
+  /**
+   * Files and directories copied as they are, by source path (relative to
+   * `src`) and output path (starting with `/`): `{ static: "/" }` puts the
+   * contents of `static/` at the root of the site. They aren't pages or
+   * browser scripts, whatever their names.
+   */
+  copy?: Record<string, string>;
   /** Data every page receives, below the `_data` files. */
   data?: PageData;
   /** Where the site is written. It is emptied first. Defaults to `_site`. */
   dest?: string;
+  /** Files and directories (relative to `src`) that aren't part of the site. */
+  ignore?: string[];
   /**
    * The site's absolute URL, e.g. `https://docs.ende.sh`. With it, `build`
    * writes `/sitemap.xml`, and redirect pages link to their canonical URL.
    */
   location?: string;
+  /**
+   * Redirects by old URL (starting with `/`) to a URL or path, which may have
+   * a `#fragment`. Each writes a redirect page, like a page's `oldUrl`.
+   */
+  redirects?: Record<string, string>;
   /**
    * Whether to write `/search.json`, the search index, and `/_satz/search.js`,
    * the `@ende/satz/search` module as JavaScript for the site's own scripts to
@@ -122,12 +137,27 @@ export async function build(options: BuildOptions = {}): Promise<Page[]> {
     throw new Error(`The dest directory ${dest} must not be or contain the src directory ${src}`);
 
   const location = options.location === undefined ? undefined : siteLocation(options.location);
-  const files: { src: string; dest: string; }[] = [];
+  const copies = Object.entries(options.copy ?? {}).map(([from, to]) => [normalizePath(from), to] as const);
+  const skipped = [...(options.ignore ?? []).map(normalizePath), ...copies.map(([from]) => from)];
+  const skip = (rel: string) => skipped.some(path => rel === path || rel.startsWith(`${path}/`));
+  const files: { src: string; dest: string; label?: string; }[] = [];
   const pages: PendingPage[] = [];
   const scripts: string[] = [];
-  await scan(src, src, dest, options.data ?? {}, pages, files, scripts);
+  await scan(src, src, dest, options.data ?? {}, skip, pages, files, scripts);
 
-  const redirects = pages.flatMap(page => page.redirects.map(oldUrl => ({ dest: redirectPath(oldUrl), src: `${page.src} (oldUrl ${oldUrl})`, url: page.url })));
+  for (const [from, to] of copies) {
+    files.push(...(await copiedFiles(src, from, to)));
+  }
+
+  const redirects = [
+    ...pages.flatMap(page => page.redirects.map(oldUrl => ({ dest: redirectPath(oldUrl), src: `${page.src} (oldUrl ${oldUrl})`, url: page.url }))),
+    ...Object.entries(options.redirects ?? {}).map(([from, to]) => {
+      if (!from.startsWith("/"))
+        throw new Error(`The redirect from ${JSON.stringify(from)} must start with /`);
+
+      return { dest: redirectPath(from), src: `the redirect from ${from}`, url: to };
+    })
+  ];
   const scriptOutputs = scripts.map(script => ({ dest: script.replace(SCRIPT, ".js"), src: script }));
 
   const generated = [
@@ -137,7 +167,15 @@ export async function build(options: BuildOptions = {}): Promise<Page[]> {
 
   const outputs = new Map<string, string>();
 
-  for (const { src: from, dest: to } of [...pages, ...redirects, ...files, ...scriptOutputs, ...generated]) {
+  const claims = [
+    ...pages,
+    ...redirects,
+    ...files.map(file => ({ dest: file.dest, src: file.label ?? file.src })),
+    ...scriptOutputs,
+    ...generated
+  ];
+
+  for (const { src: from, dest: to } of claims) {
     const previous = outputs.get(to);
 
     if (previous !== undefined)
@@ -235,7 +273,7 @@ function redirectPath(oldUrl: string): string {
 
 function redirectPage(url: string, location: string | undefined): string {
   const to = escape(url);
-  const canonical = escape((location ?? "") + url);
+  const canonical = escape(/^[a-z][a-z\d+.-]*:/i.test(url) ? url : (location ?? "") + url);
 
   return `<!DOCTYPE html>\n<html><head><meta charset="utf-8"><meta name="robots" content="noindex"><title>Redirecting to ${to}</title>` +
     `<meta http-equiv="refresh" content="0; url=${to}"><link rel="canonical" href="${canonical}"></head>` +
@@ -379,11 +417,52 @@ function lastModified(page: PendingPage): string | undefined {
   throw new Error(`${page.src} has last_modified ${JSON.stringify(value)}, which must be a date or a string`);
 }
 
+/** A path relative to `src` as `/`-separated, without `./` or a trailing `/`. */
+function normalizePath(path: string): string {
+  return path.replaceAll("\\", "/").replace(/^\.\//, "").replace(/\/+$/, "");
+}
+
+/** The files a `copy` entry copies: `from` (a file or a directory, relative to `src`) to `to` (an output path). */
+async function copiedFiles(src: string, from: string, to: string): Promise<{ src: string; dest: string; label: string; }[]> {
+  if (!to.startsWith("/"))
+    throw new Error(`The copy output ${JSON.stringify(to)} for ${JSON.stringify(from)} must start with /`);
+
+  const path = join(src, from);
+  let info;
+
+  try {
+    info = await Ende.stat(path);
+  } catch (error) {
+    if (error instanceof Ende.errors.NotFound)
+      throw new Error(`The copy source ${JSON.stringify(from)} doesn't exist in ${src}`);
+
+    throw error;
+  }
+
+  const base = to.slice(1);
+
+  if (info.isFile) {
+    const dest = base === "" || base.endsWith("/") ? `${base}${basename(from)}` : base;
+    return [{ src: from, dest, label: `${from} (copied)` }];
+  }
+
+  const files = [];
+
+  for await (const entry of walk(path, { includeDirs: false })) {
+    const inner = toPosix(relative(path, entry.path));
+    const rel = `${from}/${inner}`;
+    files.push({ src: rel, dest: `${base}${base === "" || base.endsWith("/") ? "" : "/"}${inner}`, label: `${rel} (copied)` });
+  }
+
+  return files;
+}
+
 async function scan(
   root: string,
   dir: string,
   dest: string,
   inherited: PageData,
+  skip: (rel: string) => boolean,
   pages: PendingPage[],
   files: { src: string; dest: string; }[],
   scripts: string[]
@@ -405,8 +484,11 @@ async function scan(
 
     const rel = toPosix(relative(root, path));
 
+    if (skip(rel))
+      continue;
+
     if (entry.isDirectory)
-      await scan(root, path, dest, data, pages, files, scripts);
+      await scan(root, path, dest, data, skip, pages, files, scripts);
     else if (entry.name.endsWith(".md"))
       pages.push(await loadMarkdownPage(path, rel, data));
     else if (PAGE_MODULE.test(entry.name))
@@ -607,23 +689,33 @@ function outputPath(rel: string, url: string): string {
   return url.slice(1);
 }
 
+/**
+ * Resolves a relative link or image in the Markdown page `from` against the
+ * page's source directory, since its URL can be elsewhere: `.md` files become
+ * their pages' URLs, anything else an absolute path.
+ */
 function rewriteMarkdownLink(href: string, from: string, urls: Map<string, string>): string {
-  if (/^[a-z][a-z0-9+.-]*:|^\/|^#/i.test(href))
+  if (/^[a-z][a-z0-9+.-]*:|^\/|^#/i.test(href) || href === "")
     return href;
 
-  const hash = href.indexOf("#");
-  const path = hash === -1 ? href : href.slice(0, hash);
+  const end = href.search(/[?#]/);
+  const path = end === -1 ? href : href.slice(0, end);
+  const rest = end === -1 ? "" : href.slice(end);
 
-  if (!path.endsWith(".md"))
+  if (path === "")
     return href;
 
   const target = toPosix(join(dirname(from), decodeURI(path)));
+
+  if (!path.endsWith(".md"))
+    return `/${encodeURI(target)}${path.endsWith("/") && !target.endsWith("/") ? "/" : ""}${rest}`;
+
   const url = urls.get(target);
 
   if (url === undefined)
     throw new Error(`${from} links to ${path}, which is not a page`);
 
-  return url + (hash === -1 ? "" : href.slice(hash));
+  return url + rest;
 }
 
 async function applyLayouts(src: string, page: PendingPage, html: string): Promise<string> {

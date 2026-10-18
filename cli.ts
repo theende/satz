@@ -10,7 +10,7 @@
  * `build` writes the site once. `serve` builds it, serves it, and rebuilds
  * and reloads open pages when a file in `src` changes; Ctrl-C stops it.
  *
- * An optional `<src>/_config.ts` can default-export `{ dest, data, location, search }`;
+ * An optional `<src>/_config.ts` can default-export `{ copy, data, dest, ignore, location, redirects, search }`;
  * `dest` in it is relative to `src`, and the flags win over it.
  *
  * @module
@@ -18,7 +18,7 @@
 import { parseArgs } from "@ende/cli/parse-args";
 import { resolve } from "@ende/path";
 import { build } from "./build.ts";
-import { loadConfig } from "./config.ts";
+import { configOptions, loadConfig } from "./config.ts";
 import { serve } from "./serve.ts";
 
 export type { Config } from "./config.ts";
@@ -58,15 +58,9 @@ export async function main(args: string[]): Promise<number> {
 
   const start = performance.now();
 
-  const pages = await build({
-    src,
-    dest,
-    data: config.data ?? {},
-    ...(config.location === undefined ? {} : { location: config.location }),
-    ...(config.search === undefined ? {} : { search: config.search })
-  });
+  const pages = await build({ ...configOptions(config), src, dest, data: config.data ?? {} });
 
-  console.log(`Built ${pages.length} pages into ${dest} in ${Math.round(performance.now() - start)} ms`);
+  console.log(`Built ${pageCount(pages.length)} into ${dest} in ${Math.round(performance.now() - start)} ms`);
 
   return 0;
 }
@@ -78,7 +72,7 @@ async function serveUntilInterrupted(src: string, dest: string, port: number): P
     port,
     onBuild: report => {
       if (report.ok)
-        console.log(`Built ${report.pages} pages in ${report.ms} ms`);
+        console.log(`Built ${pageCount(report.pages)} in ${report.ms} ms`);
       else
         console.error(`The build failed: ${report.error}`);
     }
@@ -98,6 +92,10 @@ async function serveUntilInterrupted(src: string, dest: string, port: number): P
   await server.close();
 
   return 0;
+}
+
+function pageCount(count: number): string {
+  return count === 1 ? "1 page" : `${count} pages`;
 }
 
 if (import.meta.main)

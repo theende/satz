@@ -38,12 +38,15 @@ static/logo.svg     copied as is
 
 `_config.ts` default-exports any of:
 
-| Option     | Meaning                                                                 |
-| ---------- | ----------------------------------------------------------------------- |
-| `dest`     | where the site is written, relative to `src` (default `_site`)          |
-| `data`     | data every page receives, below the `_data` files                       |
-| `location` | the site's absolute URL (`https://docs.ende.sh`): writes `/sitemap.xml` |
-| `search`   | `true` writes `/search.json` and `/_satz/search.js`                     |
+| Option      | Meaning                                                                       |
+| ----------- | ----------------------------------------------------------------------------- |
+| `dest`      | where the site is written, relative to `src` (default `_site`)                |
+| `data`      | data every page receives, below the `_data` files                             |
+| `ignore`    | files and directories that aren't part of the site (`["README.md", "tools"]`) |
+| `copy`      | files and directories copied as they are, by output path (`{ static: "/" }`)  |
+| `redirects` | redirect pages by old URL (`{ "/go/config/": "/runtime/configuration/" }`)    |
+| `location`  | the site's absolute URL (`https://docs.ende.sh`): writes `/sitemap.xml`       |
+| `search`    | `true` writes `/search.json` and `/_satz/search.js`                           |
 
 The command-line flags win over `_config.ts`.
 
@@ -68,7 +71,10 @@ The command-line flags win over `_config.ts`.
   `` ```json title="ende.json" `` is wrapped in a
   `<figure class="code-block">` with a `<figcaption>`.
 - **Redirects.** `oldUrl` (a path or a list) writes a redirect page at each old
-  URL, which works on any static host; `serve` answers old URLs with a 301.
+  URL, which works on any static host, and so does each entry of `redirects`;
+  `serve` answers old URLs with a 301.
+- **Copied as is.** `copy` sources are never pages or browser scripts: a
+  `.ts` file under one is published as `.ts`.
 - **Sitemap.** With `location`, `/sitemap.xml` lists every HTML page except
   `/404.html`, redirect pages and pages with `sitemap: false`, with
   `<lastmod>` from `last_modified`.

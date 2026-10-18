@@ -3,7 +3,7 @@
 // layouts, `_data.ts`, `_config.ts` and everything they import are loaded
 // fresh from disk.
 import { build, type PageData } from "./build.ts";
-import { loadConfig } from "./config.ts";
+import { configOptions, loadConfig } from "./config.ts";
 
 /** What `serve()` sends the worker. */
 export interface BuildRequest {
@@ -30,18 +30,21 @@ worker.onmessage = async ({ data: request }) => {
     const location = request.location ?? config.location;
 
     const pages = await build({
+      ...configOptions(config),
       src: request.src,
       dest: request.dest,
       data: { ...config.data, ...request.data },
-      ...(location === undefined ? {} : { location }),
-      ...(config.search === undefined ? {} : { search: config.search })
+      ...(location === undefined ? {} : { location })
     });
 
     worker.postMessage({
       ok: true,
       ms: Math.round(performance.now() - start),
       pages: pages.length,
-      redirects: pages.flatMap(page => page.redirects.map(oldUrl => [oldUrl, page.url] as [string, string]))
+      redirects: [
+        ...pages.flatMap(page => page.redirects.map(oldUrl => [oldUrl, page.url] as [string, string])),
+        ...Object.entries(config.redirects ?? {})
+      ]
     });
   } catch (error) {
     worker.postMessage({ ok: false, error: error instanceof Error ? error.message : String(error) });

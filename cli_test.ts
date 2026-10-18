@@ -1,5 +1,5 @@
 // Copyright 2026 the Ende authors. MIT license.
-import { assertEquals, assertStringIncludes } from "@ende/assert";
+import { assertEquals, assertRejects, assertStringIncludes } from "@ende/assert";
 import { join } from "@ende/path";
 import { main } from "./cli.ts";
 
@@ -31,4 +31,36 @@ Ende.test("satz build reads location from _config.ts and writes a sitemap", asyn
   await Ende.writeTextFile(join(src, "index.md"), "hi\n");
   assertEquals(await main(["build", "--src", src]), 0);
   assertStringIncludes(await Ende.readTextFile(join(src, "_site", "sitemap.xml")), "<loc>https://docs.ende.sh/</loc>");
+});
+
+Ende.test("satz build passes copy, ignore and redirects from _config.ts", async () => {
+  const src = await Ende.makeTempDir();
+  await Ende.writeTextFile(
+    join(src, "_config.ts"),
+    `export default { copy: { static: "/" }, ignore: ["README.md"], redirects: { "/": "/a/" } };\n`
+  );
+  await Ende.mkdir(join(src, "static"));
+  await Ende.writeTextFile(join(src, "static", "robots.txt"), "r\n");
+  await Ende.writeTextFile(join(src, "README.md"), "readme\n");
+  await Ende.writeTextFile(join(src, "a.md"), "a\n");
+  assertEquals(await main(["build", "--src", src]), 0);
+  assertEquals(await Ende.readTextFile(join(src, "_site", "robots.txt")), "r\n");
+  assertStringIncludes(await Ende.readTextFile(join(src, "_site", "index.html")), "url=/a/");
+  await assertRejects(() => Ende.stat(join(src, "_site", "README", "index.html")), Ende.errors.NotFound);
+});
+
+Ende.test("satz build counts one page in the singular", async () => {
+  const src = await Ende.makeTempDir();
+  await Ende.writeTextFile(join(src, "a.md"), "a\n");
+  const log = console.log;
+  const lines: string[] = [];
+  console.log = (line: string) => lines.push(line);
+
+  try {
+    assertEquals(await main(["build", "--src", src]), 0);
+  } finally {
+    console.log = log;
+  }
+
+  assertStringIncludes(lines[0] ?? "", "Built 1 page into ");
 });

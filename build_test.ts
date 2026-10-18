@@ -420,3 +420,78 @@ Ende.test("build() rejects a page at the search client's reserved path", async (
   const src = await writeSite({ "x.page.ts": `export const url = "/_satz/search.js";\nexport default () => "";\n` });
   await assertRejects(() => build({ src, dest: join(src, "_site"), search: true }), Error, "both write /_satz/search.js");
 });
+
+Ende.test("build() skips the ignored files and directories", async () => {
+  const src = await writeSite({ "README.md": "r\n", "docs/a.md": "a\n", "tools/x_test.ts": "export {};\n", "tools2/b.md": "b\n" });
+  const dest = join(src, "_site");
+  await build({ src, dest, ignore: ["README.md", "tools/"] });
+  assertEquals(await listFiles(dest), ["docs/a/index.html", "tools2/b/index.html"]);
+});
+
+Ende.test("build() copies the copy directories verbatim to their output paths", async () => {
+  const src = await writeSite({
+    "static/favicon.ico": "ico",
+    "static/img/a.svg": "<svg/>",
+    "static/.nojekyll": "",
+    "scripts/hello.ts": "const a: number = 1;\n",
+    "index.md": "i\n"
+  });
+  const dest = join(src, "_site");
+  await build({ src, dest, copy: { static: "/", scripts: "/examples/scripts/" } });
+  assertEquals(await listFiles(dest), [".nojekyll", "examples/scripts/hello.ts", "favicon.ico", "img/a.svg", "index.html"]);
+  assertEquals(await Ende.readTextFile(join(dest, "examples", "scripts", "hello.ts")), "const a: number = 1;\n");
+});
+
+Ende.test("build() copies a single file to its output path", async () => {
+  const src = await writeSite({ "x/robots.txt": "r" });
+  const dest = join(src, "_site");
+  await build({ src, dest, copy: { "x/robots.txt": "/robots.txt" } });
+  assertEquals(await listFiles(dest), ["robots.txt"]);
+});
+
+Ende.test("build() rejects a copied file that clashes with a page", async () => {
+  const src = await writeSite({ "static/a/index.html": "x", "a.md": "a\n" });
+  await assertRejects(
+    () => build({ src, dest: join(src, "_site"), copy: { static: "/" } }),
+    Error,
+    "a.md and static/a/index.html (copied) both write /a/index.html"
+  );
+});
+
+Ende.test("build() rejects a copy source that doesn't exist or an output path without a leading /", async () => {
+  const src = await writeSite({ "a.md": "a\n" });
+  await assertRejects(() => build({ src, dest: join(src, "_site"), copy: { missing: "/" } }), Error, `copy source "missing"`);
+  await assertRejects(() => build({ src, dest: join(src, "_site"), copy: { "a.md": "a.md" } }), Error, `copy output "a.md" for "a.md" must start with /`);
+});
+
+Ende.test("build() writes redirect pages for the redirects map, fragments and external URLs included", async () => {
+  const src = await writeSite({ "a.md": "a\n" });
+  const dest = join(src, "_site");
+  const pages = await build({ src, dest, redirects: { "/": "/a/", "/go/flag/": "/a/#flag", "/old": "https://example.com/x" } });
+  assertStringIncludes(await Ende.readTextFile(join(dest, "index.html")), `url=/a/"`);
+  assertStringIncludes(await Ende.readTextFile(join(dest, "go", "flag", "index.html")), `url=/a/#flag"`);
+  assertStringIncludes(await Ende.readTextFile(join(dest, "old", "index.html")), `<link rel="canonical" href="https://example.com/x">`);
+  assertEquals(pages.map(page => page.url), ["/a/"]);
+});
+
+Ende.test("build() rejects a redirect that clashes with a page or doesn't start with /", async () => {
+  const src = await writeSite({ "a.md": "a\n" });
+  await assertRejects(
+    () => build({ src, dest: join(src, "_site"), redirects: { "/a/": "/b/" } }),
+    Error,
+    "a.md and the redirect from /a/ both write /a/index.html"
+  );
+  await assertRejects(() => build({ src, dest: join(src, "_site"), redirects: { "a/": "/b/" } }), Error, `redirect from "a/" must start with /`);
+});
+
+Ende.test("build() resolves relative links and images in Markdown against the source file", async () => {
+  const { read } = await buildSite({
+    "guide/tutorials/a.md": "---\nurl: /a-tutorial/\n---\n![Shot](./images/shot.png) [Up](../other/?x=1#y) [Same](#z)\n",
+    "guide/tutorials/images/shot.png": "png"
+  });
+
+  assertEquals(
+    await read("a-tutorial/index.html"),
+    `<p><img src="/guide/tutorials/images/shot.png" alt="Shot" /> <a href="/guide/other/?x=1#y">Up</a> <a href="#z">Same</a></p>\n`
+  );
+});
