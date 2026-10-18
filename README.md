@@ -28,6 +28,10 @@ static/logo.svg     copied as is
 - A page's URL comes from its path, or from `url` in its data. URLs end with
   `/` (written as `index.html`) or a file extension (`/404.html`).
 - Names starting with `_` or `.` are not output.
+- Markdown pages get `toc` (their headings) and, without a `title` in front
+  matter, the first `#` heading as `title`. Code blocks are highlighted with
+  `hl-*` classes (`@ende/satz/highlight`); a fence like
+  `` ```json title="ende.json" `` gets a `<figcaption>`.
 
 Layouts and pages use satz's JSX runtime, which renders to strings:
 

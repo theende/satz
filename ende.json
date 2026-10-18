@@ -14,9 +14,13 @@
   "exports": {
     ".": "./mod.ts",
     "./cli": "./cli.ts",
+    "./highlight": "./highlight.ts",
     "./jsx-runtime": "./jsx_runtime.ts"
   },
   "fmt": {
+    "exclude": [
+      "tests/fixtures/docs/"
+    ],
     "json": {
       "deno": false,
       "lineWidth": 120,
@@ -70,6 +74,9 @@
   },
   "lint": {
     "rules": {
+      "exclude": [
+        "jsx-key"
+      ],
       "include": [
         "ban-untagged-todo",
         "camelcase",

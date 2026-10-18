@@ -1,0 +1,32 @@
+{
+  "name": "my-app",
+  "version": "1.4.0",
+  "exports": "./main.ts",
+  "desktop": {
+    "app": {
+      "name": "My App",
+      "identifier": "com.example.myapp",
+      "icons": {
+        "macos": "./icons/app.icns",
+        "windows": "./icons/app.ico",
+        "linux": "./icons/app.png"
+      },
+      "deepLinks": ["myapp"]
+    },
+    "backend": "cef",
+    "output": {
+      "macos": "./dist/MyApp.app",
+      "windows": "./dist/MyApp",
+      "linux": "./dist/my-app"
+    },
+    "macos": {
+      "codesignIdentity": "Developer ID Application: Acme, Inc. (TEAMID)"
+    },
+    "release": {
+      "baseUrl": "https://releases.example.com/my-app"
+    },
+    "errorReporting": {
+      "url": "https://errors.example.com/report"
+    }
+  }
+}

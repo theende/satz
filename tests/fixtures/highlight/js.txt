@@ -1,0 +1,26 @@
+import { initializeApp } from "firebase/app";
+import { doc, getDoc, getFirestore, setDoc } from "firebase/firestore";
+
+// Replace with your Firebase config (get from Firebase Console)
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT_ID.appspot.com",
+  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+  appId: "YOUR_APP_ID",
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+// Demo: write and read a document
+async function demo() {
+  const ref = doc(db, "demo", "testdoc");
+  await setDoc(ref, { hello: "world", time: Date.now() });
+  const snap = await getDoc(ref);
+  console.log("Document data:", snap.data());
+}
+
+demo().catch(console.error);

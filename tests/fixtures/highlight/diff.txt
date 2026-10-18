@@ -1,0 +1,16 @@
+  const caCert = await Deno.readTextFile("./certs/my_custom_root_CA.pem");
+  using tlsConn = await Deno.connectTls({ caCerts: [caCert], hostname: "192.0.2.1", port: 80 });
+
+  const buffer = new Uint8Array(1_024);
+- await Deno.read(tlsConn.rid, buffer);
++ await tlsConn.read(buffer);
+
+  const data = new TextEncoder().encode("Hello, world!");
+- await Deno.write(tlsConn.rid, data);
++ await tlsConn.write(data);
+
+- await Deno.shutdown(tlsConn.rid);
++ await tlsConn.closeWrite();
+
+- Deno.close(tlsConn.rid);
++ tlsConn.close();

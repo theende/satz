@@ -4,9 +4,12 @@ import { test as hasFrontMatter } from "@ende/front-matter/test";
 import { copy } from "@ende/fs/copy";
 import { emptyDir } from "@ende/fs/empty-dir";
 import { ensureDir } from "@ende/fs/ensure-dir";
-import { parse as parseMarkdown, render as renderMarkdown } from "@ende/markdown";
+import { escape } from "@ende/html";
+import { parse as parseMarkdown, render as renderMarkdown, toc, visit } from "@ende/markdown";
+import type { Code, Html, Root } from "@ende/markdown/types";
 import { dirname, extname, join, relative, resolve, SEPARATOR, toFileUrl } from "@ende/path";
 import { parse as parseYaml } from "@ende/yaml/parse";
+import { highlight } from "./highlight.ts";
 import { raw, renderToString, type Child, type RawHtml } from "./jsx_runtime.ts";
 
 /** Data available to a page: the `_data` cascade, then the page's own front matter or exports. */
@@ -61,6 +64,11 @@ const PAGE_MODULE = /\.page\.tsx?$/;
  *
  * - `.md` files and `.page.ts`/`.page.tsx` modules become pages; other files
  *   are copied as they are.
+ * - Markdown pages get their headings as `toc` (from `@ende/markdown`'s
+ *   `toc()`), and the first `#` heading as `title` when their front matter has
+ *   none. Code blocks are highlighted (see `@ende/satz/highlight`), and a block
+ *   whose fence has `title="…"` is wrapped in a `<figure class="code-block">`
+ *   with the title as its `<figcaption>`.
  * - Files and directories whose names start with `_` or `.` are skipped, apart
  *   from `_data.*` files (merged into the data of every page below them) and
  *   `_includes/` (layouts).
@@ -193,11 +201,22 @@ async function loadMarkdownPage(path: string, rel: string, inherited: PageData):
     }
   }
 
-  const data = { ...inherited, ...(attrs ?? {}) };
+  const ast = parseMarkdown(body, { gfm: true });
+  captionCodeBlocks(ast);
+  const headings = toc(ast);
+  const data: PageData = { ...inherited, toc: headings, ...(attrs ?? {}) };
+
+  if (data.title === undefined) {
+    const heading = headings.find(entry => entry.depth === 1);
+
+    if (heading !== undefined)
+      data.title = heading.text;
+  }
+
   const url = pageUrl(rel, data);
 
   const render = (urls: Map<string, string>) =>
-    Promise.resolve(renderMarkdown(parseMarkdown(body, { gfm: true }), { rewriteLink: href => rewriteMarkdownLink(href, rel, urls) }));
+    Promise.resolve(renderMarkdown(ast, { highlight: highlightCode, rewriteLink: href => rewriteMarkdownLink(href, rel, urls) }));
 
   return {
     data,
@@ -206,6 +225,34 @@ async function loadMarkdownPage(path: string, rel: string, inherited: PageData):
     src: rel,
     url
   };
+}
+
+function highlightCode(code: string, lang: string | null): string | undefined {
+  return lang === null ? undefined : highlight(code, lang);
+}
+
+/** Replaces each code block whose fence has `title="…"` with its HTML, captioned. */
+function captionCodeBlocks(ast: Root) {
+  visit(ast, "code", (node, index, parent) => {
+    const title = node.meta === null ? undefined : /(?:^|\s)title=(?:"([^"]*)"|'([^']*)')/.exec(node.meta);
+
+    if (title === undefined || title === null || parent === null || index === null)
+      return;
+
+    const html: Html = {
+      type: "html",
+      value: `<figure class="code-block"><figcaption>${escape(title[1] ?? title[2]!)}</figcaption>${renderCode(node)}</figure>`
+    };
+
+    parent.children[index] = html;
+  });
+}
+
+/** Renders a code block the way `@ende/markdown` does, highlighted. */
+function renderCode(node: Code): string {
+  const cls = node.lang === null ? "" : ` class="language-${escape(node.lang)}"`;
+  const code = highlightCode(node.value, node.lang) ?? (node.value === "" ? "" : `${escape(node.value)}\n`);
+  return `<pre><code${cls}>${code}</code></pre>`;
 }
 
 async function loadModulePages(path: string, rel: string, inherited: PageData): Promise<PendingPage[]> {

@@ -1,0 +1,42 @@
+import json
+from deno_sandbox import DenoDeploy
+
+sdk = DenoDeploy()
+
+with sdk.sandbox.create() as sandbox:
+  # Install dependencies
+  sandbox.fs.write_text_file(
+    "package.json",
+    json.dumps({
+      "private": True,
+      "scripts": {"dev": "next dev"},
+      "dependencies": {
+        "next": "^15.0.0",
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
+      },
+    }, indent=2)
+  )
+  sandbox.fs.mkdir("pages", recursive=True)
+  sandbox.fs.write_text_file(
+    "pages/index.js",
+    """export default function Home() {
+  return (
+    <main style={{ fontFamily: "system-ui", padding: "2rem" }}>
+      <h1>Next.js sandbox</h1>
+      <p>Edit pages/index.js to get started.</p>
+    </main>
+  );
+}
+"""
+  )
+  sandbox.spawn("npm", args=["install"]).wait()
+
+  # Start the dev server
+  server = sandbox.spawn("npm", args=["run", "dev"], stdout="inherit", stderr="inherit")
+
+  # Publish it
+  preview_url = sandbox.expose_http(port=3000)
+  print(f"Preview ready at {preview_url}")
+
+  server.wait()  # keep running until the process exits

@@ -1,0 +1,2 @@
+@mycompany:registry=https://pkgs.dev.azure.com/{org}/_packaging/{feed}/npm/registry/
+//pkgs.dev.azure.com/{org}/_packaging/{feed}/npm/registry/:_auth=base64EncodedToken

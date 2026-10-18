@@ -1,0 +1,105 @@
+interface TestIdentifier {
+  /** The test module the message is related to. */
+  textDocument: TextDocumentIdentifier;
+
+  /** The optional ID of the test. If not present, then the message applies to
+   * all tests in the test module. */
+  id?: string;
+
+  /** The optional ID of the step. If not present, then the message only applies
+   * to the test. */
+  stepId?: string;
+}
+
+interface TestMessage {
+  /** The content of the message. */
+  message: MarkupContent;
+
+  /** An optional string which represents the expected output. */
+  expectedOutput?: string;
+
+  /** An optional string which represents the actual output. */
+  actualOutput?: string;
+
+  /** An optional location related to the message. */
+  location?: Location;
+}
+
+interface TestEnqueuedStartedSkipped {
+  /** The state change that has occurred to a specific test or test step.
+   *
+   * - `"enqueued"` - the test is now enqueued to be tested
+   * - `"started"` - the test has started
+   * - `"skipped"` - the test was skipped
+   */
+  type: "enqueued" | "started" | "skipped";
+
+  /** The test or test step relating to the state change. */
+  test: TestIdentifier;
+}
+
+interface TestFailedErrored {
+  /** The state change that has occurred to a specific test or test step.
+   *
+   * - `"failed"` - The test failed to run properly, versus the test erroring.
+   *   currently the Deno language server does not support this.
+   * - `"errored"` - The test errored.
+   */
+  type: "failed" | "errored";
+
+  /** The test or test step relating to the state change. */
+  test: TestIdentifier;
+
+  /** Messages related to the state change. */
+  messages: TestMessage[];
+
+  /** An optional duration, in milliseconds from the start to the current
+   * state. */
+  duration?: number;
+}
+
+interface TestPassed {
+  /** The state change that has occurred to a specific test or test step. */
+  type: "passed";
+
+  /** The test or test step relating to the state change. */
+  test: TestIdentifier;
+
+  /** An optional duration, in milliseconds from the start to the current
+   * state. */
+  duration?: number;
+}
+
+interface TestOutput {
+  /** The test or test step has output information / logged information. */
+  type: "output";
+
+  /** The value of the output. */
+  value: string;
+
+  /** The associated test or test step if there was one. */
+  test?: TestIdentifier;
+
+  /** An optional location associated with the output. */
+  location?: Location;
+}
+
+interface TestEnd {
+  /** The test run has ended. */
+  type: "end";
+}
+
+type TestRunProgressMessage =
+  | TestEnqueuedStartedSkipped
+  | TestFailedErrored
+  | TestPassed
+  | TestOutput
+  | TestEnd;
+
+interface TestRunProgressParams {
+  /** The test run ID that the progress message applies to. */
+  id: number;
+
+  /** The message*/
+  message: TestRunProgressMessage;
+}

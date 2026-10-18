@@ -1,0 +1,13 @@
+# Bind for production context
+gcloud iam service-accounts add-iam-policy-binding \
+  deno-your-org-your-app@PROJECT_ID.iam.gserviceaccount.com \
+  --role=roles/iam.workloadIdentityUser \
+  --member="principal://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/oidc-deno-com/subject/deployment:YOUR_ORG/YOUR_APP/production"
+
+# Bind for staging context
+gcloud iam service-accounts add-iam-policy-binding \
+  deno-your-org-your-app@PROJECT_ID.iam.gserviceaccount.com \
+  --role=roles/iam.workloadIdentityUser \
+  --member="principal://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/oidc-deno-com/subject/deployment:YOUR_ORG/YOUR_APP/staging"
+
+# Add more bindings for each specific context as needed

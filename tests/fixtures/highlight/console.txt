@@ -1,0 +1,6 @@
+# npx allows remote execution of a package from npm or a URL
+$ npx create-next-app@latest
+
+# deno run allows remote execution of a package from various locations,
+# and can be scoped to npm via the `npm:` specifier.
+$ deno run -A npm:create-next-app@latest

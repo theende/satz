@@ -1,0 +1,38 @@
+---
+import DinosaurService from '../../lib/dinosaur-service';
+import '../../styles/index.css';
+
+export async function getStaticPaths() {
+    const dinosaursWithSlugs = DinosaurService.getDinosaursWithSlugs();
+    
+    return dinosaursWithSlugs.map((dinosaur) => ({
+        params: { slug: dinosaur.slug },
+        props: { dinosaur }
+    }));
+}
+
+const { dinosaur } = Astro.props;
+---
+
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+        <meta name="viewport" content="width=device-width" />
+        <meta name="generator" content={Astro.generator} />
+        <title>{dinosaur.name} - Dinosaur Directory</title>
+        <meta name="description" content={dinosaur.description} />
+		<link rel="stylesheet" href="https://demo-styles.deno.deno.net/styles.css">
+    </head>
+    <body class="dinosaur">
+        <main>
+            <h1>🦕 {dinosaur.name}</h1>
+            
+            <div class="info-card">
+                <p>{dinosaur.description}</p>
+            </div>
+            
+            <a href="/" class="btn-secondary">Back to Directory</a>
+        </main>
+    </body>
+</html>

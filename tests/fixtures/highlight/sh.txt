@@ -1,0 +1,26 @@
+my-deno-project/
+├── src/
+│   ├── models/
+│   │   ├── user.ts
+│   │   ├── user_test.ts          // Unit tests for user model
+│   │   ├── product.ts
+│   │   └── product_test.ts       // Unit tests for product model
+│   ├── services/
+│   │   ├── auth-service.ts
+│   │   ├── auth-service_test.ts  // Unit tests for auth service
+│   │   ├── data-service.ts
+│   │   └── data-service_test.ts  // Unit tests for data service
+│   └── utils/
+│       ├── helpers.ts
+│       └── helpers_test.ts       // Unit tests for helpers
+├── tests/
+│   ├── integration/              // Integration tests directory
+│   │   ├── api_test.ts           // Tests API endpoints
+│   │   └── db_test.ts            // Tests database interactions
+│   ├── e2e/                      // End-to-end tests
+│   │   └── user_flow_test.ts     // Tests complete user workflows
+│   └── fixtures/                 // Shared test data and utilities
+│       ├── test_data.ts          // Test data used across tests
+│       └── setup.ts              // Common setup functions
+├── main.ts
+└── deno.json                     // Project configuration
