@@ -1,6 +1,6 @@
 // Copyright 2026 the Ende authors. MIT license.
 import { serveDir } from "@ende/http/file-server";
-import { basename, dirname, join, relative, resolve, SEPARATOR } from "@ende/path";
+import { basename, dirname, isAbsolute, join, relative, resolve, SEPARATOR } from "@ende/path";
 import type { BuildRequest, BuildResponse } from "./_build_worker.ts";
 import type { PageData } from "./build.ts";
 import { loadConfig } from "./config.ts";
@@ -321,7 +321,11 @@ function buildInWorker(request: BuildRequest): Promise<BuildResponse> {
 async function ignoredPaths(src: string, dest: string): Promise<(path: string) => boolean> {
   const sources = [...new Set([src, await Ende.realPath(src)])];
   const dests = [...new Set([dest, await Ende.realPath(dest).catch(() => dest)])];
-  const inside = (dir: string, path: string) => path === dir || !relative(dir, path).startsWith("..");
+  // On Windows, `relative()` between drives is the absolute path itself.
+  const inside = (dir: string, path: string) => {
+    const rel = relative(dir, path);
+    return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+  };
 
   return path => {
     if (dests.some(dir => inside(dir, path)))

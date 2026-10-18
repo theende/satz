@@ -7,8 +7,9 @@ import { ensureDir } from "@ende/fs/ensure-dir";
 import { escape } from "@ende/html";
 import { parse as parseMarkdown, render as renderMarkdown, toc, visit } from "@ende/markdown";
 import type { Code, Html, Nodes, Root } from "@ende/markdown/types";
-import { dirname, extname, join, relative, resolve, SEPARATOR, toFileUrl } from "@ende/path";
+import { dirname, extname, isAbsolute, join, relative, resolve, SEPARATOR, toFileUrl } from "@ende/path";
 import { parse as parseYaml } from "@ende/yaml/parse";
+import { SEARCH_CLIENT } from "./_search_client.ts";
 import { highlight } from "./highlight.ts";
 import { raw, renderToString, type Child, type RawHtml } from "./jsx_runtime.ts";
 import type { SearchEntry, SearchHeading } from "./search.ts";
@@ -114,7 +115,10 @@ export async function build(options: BuildOptions = {}): Promise<Page[]> {
   const dest = resolve(options.dest ?? "_site");
   const src = resolve(options.src ?? ".");
 
-  if (dest === src || !relative(dest, src).startsWith(".."))
+  // On Windows, `relative()` between drives is the absolute path of `src`.
+  const fromDest = relative(dest, src);
+
+  if (fromDest === "" || (!fromDest.startsWith("..") && !isAbsolute(fromDest)))
     throw new Error(`The dest directory ${dest} must not be or contain the src directory ${src}`);
 
   const location = options.location === undefined ? undefined : siteLocation(options.location);
@@ -145,7 +149,6 @@ export async function build(options: BuildOptions = {}): Promise<Page[]> {
   // Transpiled before dest is emptied, so a script that doesn't parse leaves
   // the last build in place.
   const transpiled = scripts.length === 0 ? new Map<string, string>() : await transpile(src, scripts);
-  const client = options.search ? await searchClient() : undefined;
 
   // Source path → URL, for rewriting links to .md files.
   const urls = new Map(pages.map(page => [page.src, page.url]));
@@ -176,9 +179,9 @@ export async function build(options: BuildOptions = {}): Promise<Page[]> {
   if (location !== undefined)
     await writeOutput(dest, "sitemap.xml", sitemap(pages, location));
 
-  if (client !== undefined) {
+  if (options.search) {
     await writeOutput(dest, "search.json", searchIndex(pages));
-    await writeOutput(dest, "_satz/search.js", client);
+    await writeOutput(dest, "_satz/search.js", SEARCH_CLIENT);
   }
 
   return pages.map(({ url, src, dest, data, redirects }) => ({ url, src, dest, data, redirects }));
@@ -321,12 +324,12 @@ function searchText(ast: Root): string {
  * each file's JavaScript with its relative `.ts`/`.tsx` imports pointing at
  * `.js`.
  */
-async function transpile(cwd: string, files: string[], flags: string[] = []): Promise<Map<string, string>> {
+async function transpile(cwd: string, files: string[]): Promise<Map<string, string>> {
   const outdir = await Ende.makeTempDir({ prefix: "satz-transpile-" });
 
   try {
     const { code, stderr } = await new Ende.Command(Ende.execPath(), {
-      args: ["transpile", ...flags, "--outdir", outdir, ...files],
+      args: ["transpile", "--outdir", outdir, ...files],
       cwd,
       env: { NO_COLOR: "1" },
       stdout: "null",
@@ -358,23 +361,6 @@ async function transpile(cwd: string, files: string[], flags: string[] = []): Pr
  */
 function pointImportsAtJs(code: string): string {
   return code.replace(/(\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)(["'])(\.\.?\/[^"'\n]*?)\.tsx?\2/g, "$1$2$3.js$2");
-}
-
-/** `@ende/satz/search` as JavaScript, read from wherever satz is loaded from. */
-async function searchClient(): Promise<string> {
-  const response = await fetch(new URL("./search.ts", import.meta.url));
-
-  if (!response.ok)
-    throw new Error(`Could not read satz's search client: ${response.status} ${response.statusText}`);
-
-  const dir = await Ende.makeTempDir({ prefix: "satz-search-" });
-
-  try {
-    await Ende.writeTextFile(join(dir, "search.ts"), await response.text());
-    return (await transpile(dir, ["search.ts"], ["--no-config"])).get("search.ts")!;
-  } finally {
-    await Ende.remove(dir, { recursive: true });
-  }
 }
 
 /** `last_modified` as a sitemap date: YAML dates become `YYYY-MM-DD`, strings are kept. */

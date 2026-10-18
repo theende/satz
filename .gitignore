@@ -1,1 +1,3 @@
 _site/
+# Tracked despite a global *.lock ignore, so CI installs exactly these versions.
+!ende.lock

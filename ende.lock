@@ -1,0 +1,124 @@
+{
+  "version": "5",
+  "specifiers": {
+    "jsr:@ende/assert@^2026.10.15": "2026.10.15",
+    "jsr:@ende/cli@^2026.10.15": "2026.10.15",
+    "jsr:@ende/collections@^2026.10.15": "2026.10.15",
+    "jsr:@ende/encoding@^2026.10.15": "2026.10.15",
+    "jsr:@ende/fmt@^2026.10.15": "2026.10.15",
+    "jsr:@ende/front-matter@^2026.10.15": "2026.10.15",
+    "jsr:@ende/fs@^2026.10.15": "2026.10.15",
+    "jsr:@ende/html@^2026.10.15": "2026.10.15",
+    "jsr:@ende/http@^2026.10.15": "2026.10.15",
+    "jsr:@ende/internal@^2026.10.14": "2026.10.15",
+    "jsr:@ende/internal@^2026.10.15": "2026.10.15",
+    "jsr:@ende/markdown@^2026.10.17": "2026.10.17",
+    "jsr:@ende/media-types@^2026.10.15": "2026.10.15",
+    "jsr:@ende/net@^2026.10.15": "2026.10.15",
+    "jsr:@ende/path@^2026.10.15": "2026.10.15",
+    "jsr:@ende/streams@^2026.10.15": "2026.10.15",
+    "jsr:@ende/toml@^2026.10.15": "2026.10.15",
+    "jsr:@ende/yaml@^2026.10.15": "2026.10.15"
+  },
+  "jsr": {
+    "@ende/assert@2026.10.15": {
+      "integrity": "3d7962cbd11f8b55a9f691be6c01de55c99fa371222dd56378a32978438d8573",
+      "dependencies": [
+        "jsr:@ende/internal@^2026.10.14"
+      ]
+    },
+    "@ende/cli@2026.10.15": {
+      "integrity": "e1b947045f97d3750b3e419b22083815268764c15064961ca19610f708a8ec51",
+      "dependencies": [
+        "jsr:@ende/fmt",
+        "jsr:@ende/internal@^2026.10.14"
+      ]
+    },
+    "@ende/collections@2026.10.15": {
+      "integrity": "03a53d947de6c07ede68ad6a6ad8f16e009d9f2c55e7bf2357870b5f88bc6c78"
+    },
+    "@ende/encoding@2026.10.15": {
+      "integrity": "06e5d626ed4f6c8082d285dc3a6f5f2e4e7d7a77fe61d53751ce5e09b9b10ff9"
+    },
+    "@ende/fmt@2026.10.15": {
+      "integrity": "a45abcdcb9fdd36ff050b539c724816be229661ac8b951eb09ea716890c9b334"
+    },
+    "@ende/front-matter@2026.10.15": {
+      "integrity": "540025fd4f4fb65a75df71cd589a98175987619ae2ffb648738cc179d4230778",
+      "dependencies": [
+        "jsr:@ende/toml",
+        "jsr:@ende/yaml"
+      ]
+    },
+    "@ende/fs@2026.10.15": {
+      "integrity": "08f90fc65f2673817760baec63bfb58c94638a270749715a913219fcc83befc4",
+      "dependencies": [
+        "jsr:@ende/internal@^2026.10.15",
+        "jsr:@ende/path"
+      ]
+    },
+    "@ende/html@2026.10.15": {
+      "integrity": "027f40e98b9ec2cbe38a8723bd1ee828bda6789164de047af5ab425d71781ab6"
+    },
+    "@ende/http@2026.10.15": {
+      "integrity": "37ac0bbaa15731b6ff33c4e8e146a40fd7cb1d59738bfb75bcb7bb62f3ad49b9",
+      "dependencies": [
+        "jsr:@ende/cli",
+        "jsr:@ende/encoding",
+        "jsr:@ende/fmt",
+        "jsr:@ende/fs",
+        "jsr:@ende/html",
+        "jsr:@ende/media-types",
+        "jsr:@ende/net",
+        "jsr:@ende/path",
+        "jsr:@ende/streams"
+      ]
+    },
+    "@ende/internal@2026.10.15": {
+      "integrity": "3818f01f9a75cffcd63bbacfd3c4d0b804ca9c34564d9fca6196fc4e95df13a5"
+    },
+    "@ende/markdown@2026.10.17": {
+      "integrity": "5c4367b203c1d9bfe55d3ddd945c1fb5b78d647a0b54b0cd1402b893e1fde82d",
+      "dependencies": [
+        "jsr:@ende/html"
+      ]
+    },
+    "@ende/media-types@2026.10.15": {
+      "integrity": "487e87377f52e5c0f3541984e5fd4a59466e755da4e9042f934749806f11f439"
+    },
+    "@ende/net@2026.10.15": {
+      "integrity": "582e222ae39a3b7c1a5d3d0f9cebcd50b3b41ea7e2791d6062b8d64d5272b7e8"
+    },
+    "@ende/path@2026.10.15": {
+      "integrity": "2edd18c8bbb21fef293ca583a35602850821a79d3b0aba2305d62e9be36ce6b0",
+      "dependencies": [
+        "jsr:@ende/internal@^2026.10.15"
+      ]
+    },
+    "@ende/streams@2026.10.15": {
+      "integrity": "61689e0ec905ac27fd8745917b956bee7d3b141657fb54487a2e8a944408336b"
+    },
+    "@ende/toml@2026.10.15": {
+      "integrity": "a519cbc8f3f4087dd48e9798d6ee222bc400bc859acd8248b92e62aea6480578",
+      "dependencies": [
+        "jsr:@ende/collections"
+      ]
+    },
+    "@ende/yaml@2026.10.15": {
+      "integrity": "cc1b10aa8cfcde3956df9c62bd078e3ab81aa787879611f7f87b00caaa7257fc"
+    }
+  },
+  "workspace": {
+    "dependencies": [
+      "jsr:@ende/assert@^2026.10.15",
+      "jsr:@ende/cli@^2026.10.15",
+      "jsr:@ende/front-matter@^2026.10.15",
+      "jsr:@ende/fs@^2026.10.15",
+      "jsr:@ende/html@^2026.10.15",
+      "jsr:@ende/http@^2026.10.15",
+      "jsr:@ende/markdown@^2026.10.17",
+      "jsr:@ende/path@^2026.10.15",
+      "jsr:@ende/yaml@^2026.10.15"
+    ]
+  }
+}

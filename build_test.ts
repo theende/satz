@@ -112,6 +112,14 @@ Ende.test("build() passes site data to every page", async () => {
   assertEquals(await Ende.readTextFile(join(dest, "a", "index.html")), "from options");
 });
 
+Ende.test("build() rejects a dest that is or contains src, and accepts one beside it", async () => {
+  const src = await writeSite({ "index.md": "hi\n" });
+  await assertRejects(() => build({ src, dest: src }), Error, "must not be or contain the src directory");
+  await assertRejects(() => build({ src, dest: join(src, "..") }), Error, "must not be or contain the src directory");
+  await build({ src, dest: `${src}-site` });
+  assertEquals(await Ende.readTextFile(join(`${src}-site`, "index.html")), "<p>hi</p>\n");
+});
+
 Ende.test("build() rejects two pages with the same URL", async () => {
   const src = await writeSite({ "a.md": "---\nurl: /x/\n---\n", "b.md": "---\nurl: /x/\n---\n" });
   await assertRejects(() => build({ src, dest: join(src, "_site") }), Error, "a.md and b.md both write /x/index.html");

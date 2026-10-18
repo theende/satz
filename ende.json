@@ -95,17 +95,22 @@
   "name": "@ende/satz",
   "publish": {
     "exclude": [
+      ".gitattributes",
+      ".github/",
       "**/*_test.ts",
       "**/*_test.tsx",
       "tests/",
+      "_tools/",
       "ende.lock",
-      "IMPLEMENTATION_PLAN.md"
+      "IMPLEMENTATION_PLAN.md",
+      "RELEASE.md"
     ]
   },
   "tasks": {
     "check": "ende check",
+    "gen": "ende run -A _tools/gen_search_client.ts",
     "ok": "ende fmt --check && ende lint && ende check && ende test -A",
     "test": "ende test -A"
   },
-  "version": "2026.10.17"
+  "version": "2026.10.18"
 }

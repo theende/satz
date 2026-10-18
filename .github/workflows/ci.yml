@@ -1,0 +1,40 @@
+name: ci
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [primary]
+  pull_request:
+    branches: [primary]
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v7
+
+      - name: Set up Ende
+        uses: ./.github/actions/setup-ende
+
+      # The lockfile pins every dependency, so CI never resolves versions
+      # itself (fresh std releases are blocked by the minimum dependency age).
+      - name: Install dependencies
+        run: ende install --frozen
+
+      - name: Format, lint, check and test
+        run: ende task ok
+
+      - name: Lockfile unchanged
+        run: git diff --exit-code -- ende.lock
