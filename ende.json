@@ -1,0 +1,102 @@
+{
+  "compilerOptions": {
+    "exactOptionalPropertyTypes": true,
+    "jsx": "precompile",
+    "jsxImportSource": "@ende/satz",
+    "noImplicitOverride": true,
+    "noUncheckedIndexedAccess": true,
+    "strict": true,
+    "useUnknownInCatchVariables": true
+  },
+  "exclude": [
+    "_site"
+  ],
+  "exports": {
+    ".": "./mod.ts",
+    "./cli": "./cli.ts",
+    "./jsx-runtime": "./jsx_runtime.ts"
+  },
+  "fmt": {
+    "json": {
+      "deno": false,
+      "lineWidth": 120,
+      "trailingCommas": "never"
+    },
+    "markdown": {
+      "deno": false
+    },
+    "typescript": {
+      "arrowFunction.useParentheses": "preferNone",
+      "bracePosition": "sameLine",
+      "deno": false,
+      "enumDeclaration.memberSpacing": "newLine",
+      "exportDeclaration.sortNamedExports": "caseInsensitive",
+      "exportDeclaration.sortTypeOnlyExports": "last",
+      "importDeclaration.sortNamedImports": "caseInsensitive",
+      "importDeclaration.sortTypeOnlyImports": "last",
+      "indentWidth": 2,
+      "lineWidth": 160,
+      "memberExpression.linePerExpression": true,
+      "module.sortExportDeclarations": "maintain",
+      "module.sortImportDeclarations": "maintain",
+      "newLineKind": "lf",
+      "nextControlFlowPosition": "sameLine",
+      "operatorPosition": "sameLine",
+      "preferHanging": false,
+      "preferSingleLine": false,
+      "quoteProps": "asNeeded",
+      "quoteStyle": "alwaysDouble",
+      "semiColons": "always",
+      "singleBodyPosition": "nextLine",
+      "spaceAround": false,
+      "spaceSurroundingProperties": true,
+      "switchCase.bracePosition": "sameLine",
+      "switchStatement.bracePosition": "sameLine",
+      "trailingCommas": "never",
+      "useBraces": "maintain",
+      "useTabs": false
+    }
+  },
+  "imports": {
+    "@ende/assert": "jsr:@ende/assert@^2026.10.15",
+    "@ende/cli": "jsr:@ende/cli@^2026.10.15",
+    "@ende/front-matter": "jsr:@ende/front-matter@^2026.10.15",
+    "@ende/fs": "jsr:@ende/fs@^2026.10.15",
+    "@ende/html": "jsr:@ende/html@^2026.10.15",
+    "@ende/markdown": "jsr:@ende/markdown@^2026.10.17",
+    "@ende/path": "jsr:@ende/path@^2026.10.15",
+    "@ende/satz/jsx-runtime": "./jsx_runtime.ts",
+    "@ende/yaml": "jsr:@ende/yaml@^2026.10.15"
+  },
+  "lint": {
+    "rules": {
+      "include": [
+        "ban-untagged-todo",
+        "camelcase",
+        "no-import-prefix",
+        "no-sync-fn-in-async-fn",
+        "single-var-declarator"
+      ],
+      "tags": [
+        "recommended",
+        "jsr"
+      ]
+    }
+  },
+  "name": "@ende/satz",
+  "publish": {
+    "exclude": [
+      "**/*_test.ts",
+      "**/*_test.tsx",
+      "tests/",
+      "ende.lock",
+      "IMPLEMENTATION_PLAN.md"
+    ]
+  },
+  "tasks": {
+    "check": "ende check",
+    "ok": "ende fmt --check && ende lint && ende check && ende test -A",
+    "test": "ende test -A"
+  },
+  "version": "2026.10.17"
+}
