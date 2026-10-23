@@ -385,16 +385,32 @@ async function transpile(cwd: string, files: string[]): Promise<Map<string, stri
       throw new Error(`Could not transpile the browser scripts: ${message}`);
     }
 
+    // `ende transpile` writes each file under `outdir` at its path relative to
+    // the files' common directory, not to `cwd`.
+    const common = commonDir(files);
     const outputs = new Map<string, string>();
 
     for (const file of files) {
-      outputs.set(file, pointImportsAtJs(await Ende.readTextFile(join(outdir, file.replace(SCRIPT, ".js")))));
+      outputs.set(file, pointImportsAtJs(await Ende.readTextFile(join(outdir, file.slice(common.length).replace(SCRIPT, ".js")))));
     }
 
     return outputs;
   } finally {
     await Ende.remove(outdir, { recursive: true });
   }
+}
+
+/** The longest directory prefix (`""` or ending in `/`) shared by `/`-separated `paths`. */
+function commonDir(paths: string[]): string {
+  let common = paths[0]!.slice(0, paths[0]!.lastIndexOf("/") + 1);
+
+  for (const path of paths) {
+    while (!path.startsWith(common)) {
+      common = common.slice(0, common.lastIndexOf("/", common.length - 2) + 1);
+    }
+  }
+
+  return common;
 }
 
 /**

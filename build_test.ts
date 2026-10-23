@@ -362,6 +362,25 @@ Ende.test("build() emits browser scripts as JavaScript, pointing relative .ts im
   assert(!main.includes("import type"), main);
 });
 
+// `ende transpile` lays out its output under the inputs' common directory, so
+// scripts that all sit in one directory lose that prefix there.
+Ende.test("build() emits browser scripts that share one directory at their own paths", async () => {
+  const src = await writeSite({ "js/a/one.ts": "export const one: number = 1;\n", "js/two.ts": "export const two: number = 2;\n" });
+  const dest = join(src, "_site");
+  await build({ src, dest });
+
+  assertEquals(await listFiles(dest), ["js/a/one.js", "js/two.js"]);
+  assertStringIncludes(await Ende.readTextFile(join(dest, "js", "a", "one.js")), "export const one = 1;");
+});
+
+Ende.test("build() emits a lone browser script at its own path", async () => {
+  const src = await writeSite({ "js/a/one.ts": "export const one: number = 1;\n" });
+  const dest = join(src, "_site");
+  await build({ src, dest });
+
+  assertEquals(await listFiles(dest), ["js/a/one.js"]);
+});
+
 Ende.test("build() rejects a browser script whose .js clashes with a file", async () => {
   const src = await writeSite({ "js/main.ts": "export {};\n", "js/main.js": "export {};\n" });
   await assertRejects(() => build({ src, dest: join(src, "_site") }), Error, "js/main.js and js/main.ts both write /js/main.js");
